@@ -29,6 +29,10 @@ type AttendanceHandler struct {
 	service services.AttendanceService
 }
 
+type OfficeHandler struct {
+	service services.OfficeService
+}
+
 func NewAuthHandler(service services.AuthService, users services.EmployeeService) *AuthHandler {
 	return &AuthHandler{service: service, users: users}
 }
@@ -39,6 +43,10 @@ func NewEmployeeHandler(service services.EmployeeService) *EmployeeHandler {
 
 func NewAttendanceHandler(service services.AttendanceService) *AttendanceHandler {
 	return &AttendanceHandler{service: service}
+}
+
+func NewOfficeHandler(service services.OfficeService) *OfficeHandler {
+	return &OfficeHandler{service: service}
 }
 
 func (h *EmployeeHandler) ListOrCreate(w http.ResponseWriter, r *http.Request) {
@@ -152,9 +160,19 @@ func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *EmployeeHandler) Detail(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/api/v1/employees/")
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/employees/")
+	if path == "" {
+		utils.JSONError(w, http.StatusBadRequest, "employee id is required")
+		return
+	}
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	id := parts[0]
 	if id == "" {
 		utils.JSONError(w, http.StatusBadRequest, "employee id is required")
+		return
+	}
+	if len(parts) == 2 && parts[1] == "profile" {
+		h.Profile(w, r, id)
 		return
 	}
 	switch r.Method {
@@ -186,6 +204,19 @@ func (h *EmployeeHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	default:
 		utils.JSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+func (h *EmployeeHandler) Profile(w http.ResponseWriter, r *http.Request, employeeID string) {
+	if r.Method != http.MethodGet {
+		utils.JSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	profile, err := h.service.Profile(r.Context(), employeeID)
+	if err != nil {
+		utils.JSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, profile)
 }
 
 func (h *AttendanceHandler) ClockIn(w http.ResponseWriter, r *http.Request) {
@@ -240,6 +271,7 @@ func (h *AttendanceHandler) List(w http.ResponseWriter, r *http.Request) {
 	filter := models.AttendanceFilter{
 		EmployeeID: strings.TrimSpace(r.URL.Query().Get("employeeId")),
 		Status:     strings.TrimSpace(r.URL.Query().Get("status")),
+		Approval:   strings.TrimSpace(r.URL.Query().Get("approval")),
 		From:       from,
 		To:         to,
 		Page:       page,
@@ -267,6 +299,19 @@ func (h *AttendanceHandler) Summary(w http.ResponseWriter, r *http.Request) {
 	utils.JSON(w, http.StatusOK, summary)
 }
 
+func (h *AttendanceHandler) Analytics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		utils.JSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	analytics, err := h.service.Analytics(r.Context())
+	if err != nil {
+		utils.JSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, analytics)
+}
+
 func (h *AttendanceHandler) RecentByEmployee(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		utils.JSONError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -280,6 +325,92 @@ func (h *AttendanceHandler) RecentByEmployee(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	utils.JSON(w, http.StatusOK, items)
+}
+
+func (h *AttendanceHandler) Approve(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.JSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	user, ok := middleware.UserFromContext(r.Context())
+	if !ok {
+		utils.JSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	attendanceID := strings.TrimPrefix(r.URL.Path, "/api/v1/attendance/")
+	attendanceID = strings.TrimSuffix(attendanceID, "/approval")
+	attendanceID = strings.Trim(attendanceID, "/")
+	if attendanceID == "" {
+		utils.JSONError(w, http.StatusBadRequest, "attendance id is required")
+		return
+	}
+	var payload struct {
+		Action string `json:"action"`
+		Status string `json:"status"`
+		Note   string `json:"note"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		utils.JSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	updated, err := h.service.Approve(r.Context(), models.AttendanceApprovalInput{
+		AttendanceID: attendanceID,
+		Action:       payload.Action,
+		Status:       payload.Status,
+		Note:         payload.Note,
+		ApprovedBy:   user.ID,
+	})
+	if err != nil {
+		utils.JSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, updated)
+}
+
+func (h *AttendanceHandler) EmployeeSummary(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		utils.JSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	user, ok := middleware.UserFromContext(r.Context())
+	if !ok {
+		utils.JSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	profile, err := h.service.EmployeeSummary(r.Context(), user.ID)
+	if err != nil {
+		utils.JSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, profile)
+}
+
+func (h *OfficeHandler) GetOrUpdate(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		settings, err := h.service.Get(r.Context())
+		if err != nil {
+			utils.JSONError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		utils.JSON(w, http.StatusOK, settings)
+	case http.MethodPut:
+		fallthrough
+	case http.MethodPatch:
+		var input models.OfficeSettings
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			utils.JSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		saved, err := h.service.Update(r.Context(), input)
+		if err != nil {
+			utils.JSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		utils.JSON(w, http.StatusOK, saved)
+	default:
+		utils.JSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }
 
 func (h *AttendanceHandler) parseClockForm(r *http.Request) (models.ClockInInput, error) {

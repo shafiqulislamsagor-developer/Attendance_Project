@@ -34,16 +34,25 @@ type UserRepository interface {
 	CountByRole(ctx context.Context, role models.Role) (int64, error)
 	Count(ctx context.Context) (int64, error)
 	FindAdmin(ctx context.Context) (models.User, error)
+	ApplyDeletePolicy(ctx context.Context) error
 }
 
 type AttendanceRepository interface {
 	Create(ctx context.Context, attendance models.Attendance) (models.Attendance, error)
 	FindByID(ctx context.Context, id string) (models.Attendance, error)
+	FindOpenByEmployee(ctx context.Context, employeeID string) (models.Attendance, error)
 	FindTodayByEmployee(ctx context.Context, employeeID string, day time.Time) (models.Attendance, error)
-	UpdateClockOut(ctx context.Context, id string, clockOut time.Time, latitude, longitude float64, deviceInfo string) (models.Attendance, error)
+	UpdateClockOut(ctx context.Context, id string, clockOut time.Time, latitude, longitude float64, deviceInfo string, workDuration, lateMinutes, overtimeMinutes int64) (models.Attendance, error)
+	UpdateApproval(ctx context.Context, id string, approvalStatus, status, note, approvedBy string) (models.Attendance, error)
 	List(ctx context.Context, filter models.AttendanceFilter) ([]models.Attendance, int64, error)
 	Summary(ctx context.Context) (models.AttendanceSummary, error)
 	RecentByEmployee(ctx context.Context, employeeID string, limit int64) ([]models.Attendance, error)
+	ListByEmployee(ctx context.Context, employeeID string, limit int64) ([]models.Attendance, error)
+}
+
+type OfficeRepository interface {
+	Get(ctx context.Context) (models.OfficeSettings, error)
+	Upsert(ctx context.Context, input models.OfficeSettings) (models.OfficeSettings, error)
 }
 
 type userRepo struct {
@@ -54,12 +63,20 @@ type attendanceRepo struct {
 	collection *mongo.Collection
 }
 
+type officeRepo struct {
+	collection *mongo.Collection
+}
+
 func NewUserRepository(db database.Service) UserRepository {
 	return &userRepo{collection: db.Collections().Users}
 }
 
 func NewAttendanceRepository(db database.Service) AttendanceRepository {
 	return &attendanceRepo{collection: db.Collections().Attendances}
+}
+
+func NewOfficeRepository(db database.Service) OfficeRepository {
+	return &officeRepo{collection: db.Collections().Office}
 }
 
 func timeoutContext(parent context.Context) (context.Context, context.CancelFunc) {
@@ -124,6 +141,7 @@ func (r *userRepo) List(ctx context.Context, filter UserListFilter) ([]models.Us
 			{"name": bson.M{"$regex": filter.Search, "$options": "i"}},
 			{"email": bson.M{"$regex": filter.Search, "$options": "i"}},
 			{"employeeCode": bson.M{"$regex": filter.Search, "$options": "i"}},
+			{"phone": bson.M{"$regex": filter.Search, "$options": "i"}},
 		}
 	}
 	total, err := r.collection.CountDocuments(ctx, query)
@@ -156,7 +174,10 @@ func (r *userRepo) Update(ctx context.Context, id string, input models.UpdateUse
 	}
 	updates := bson.M{"updatedAt": time.Now()}
 	if input.Name != "" {
-		updates["name"] = input.Name
+		updates["name"] = strings.TrimSpace(input.Name)
+	}
+	if input.Phone != "" {
+		updates["phone"] = strings.TrimSpace(input.Phone)
 	}
 	if input.Email != "" {
 		updates["email"] = strings.ToLower(strings.TrimSpace(input.Email))
@@ -218,6 +239,26 @@ func (r *userRepo) FindAdmin(ctx context.Context) (models.User, error) {
 	return user, err
 }
 
+func (r *userRepo) ApplyDeletePolicy(ctx context.Context) error {
+	ctx, cancel := timeoutContext(ctx)
+	defer cancel()
+
+	var firstUser models.User
+	err := r.collection.FindOne(ctx, bson.M{}, options.FindOne().SetSort(bson.M{"createdAt": 1})).Decode(&firstUser)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	if _, err := r.collection.UpdateMany(ctx, bson.M{}, bson.M{"$set": bson.M{"isDelete": true}}); err != nil {
+		return err
+	}
+	_, err = r.collection.UpdateByID(ctx, firstUser.ID, bson.M{"$set": bson.M{"isDelete": false}})
+	return err
+}
+
 func (r *attendanceRepo) Create(ctx context.Context, attendance models.Attendance) (models.Attendance, error) {
 	ctx, cancel := timeoutContext(ctx)
 	defer cancel()
@@ -243,6 +284,22 @@ func (r *attendanceRepo) FindByID(ctx context.Context, id string) (models.Attend
 	return attendance, err
 }
 
+func (r *attendanceRepo) FindOpenByEmployee(ctx context.Context, employeeID string) (models.Attendance, error) {
+	ctx, cancel := timeoutContext(ctx)
+	defer cancel()
+	var attendance models.Attendance
+	objectID, err := primitive.ObjectIDFromHex(employeeID)
+	if err != nil {
+		return attendance, err
+	}
+	err = r.collection.FindOne(ctx, bson.M{
+		"employeeId": objectID,
+		"status":     bson.M{"$nin": []string{"clocked-out", "absent"}},
+		"clockOut":   bson.M{"$exists": false},
+	}).Decode(&attendance)
+	return attendance, err
+}
+
 func (r *attendanceRepo) FindTodayByEmployee(ctx context.Context, employeeID string, day time.Time) (models.Attendance, error) {
 	ctx, cancel := timeoutContext(ctx)
 	defer cancel()
@@ -257,17 +314,62 @@ func (r *attendanceRepo) FindTodayByEmployee(ctx context.Context, employeeID str
 	return attendance, err
 }
 
-func (r *attendanceRepo) UpdateClockOut(ctx context.Context, id string, clockOut time.Time, latitude, longitude float64, deviceInfo string) (models.Attendance, error) {
+func (r *attendanceRepo) UpdateClockOut(ctx context.Context, id string, clockOut time.Time, latitude, longitude float64, deviceInfo string, workDuration, lateMinutes, overtimeMinutes int64) (models.Attendance, error) {
 	ctx, cancel := timeoutContext(ctx)
 	defer cancel()
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return models.Attendance{}, err
 	}
-	update := bson.M{"$set": bson.M{"clockOut": clockOut, "status": "clocked-out", "latitude": latitude, "longitude": longitude, "deviceInfo": deviceInfo, "updatedAt": clockOut}}
-	_, err = r.collection.UpdateByID(ctx, objectID, update)
+	update := bson.M{"$set": bson.M{
+		"clockOut":         clockOut,
+		"status":           "pending",
+		"latitude":         latitude,
+		"longitude":        longitude,
+		"deviceInfo":       deviceInfo,
+		"workDuration":     workDuration,
+		"lateMinutes":      lateMinutes,
+		"overtimeMinutes":  overtimeMinutes,
+		"approvalStatus":   "pending",
+		"updatedAt":        clockOut,
+	}}
+	filter := bson.M{"_id": objectID, "status": bson.M{"$ne": "clocked-out"}}
+	result, err := r.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return models.Attendance{}, err
+	}
+	if result.MatchedCount == 0 {
+		return models.Attendance{}, mongo.ErrNoDocuments
+	}
+	return r.FindByID(ctx, id)
+}
+
+func (r *attendanceRepo) UpdateApproval(ctx context.Context, id string, approvalStatus, status, note, approvedBy string) (models.Attendance, error) {
+	ctx, cancel := timeoutContext(ctx)
+	defer cancel()
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return models.Attendance{}, err
+	}
+	now := time.Now()
+	updates := bson.M{
+		"approvalStatus": strings.ToLower(strings.TrimSpace(approvalStatus)),
+		"status":         strings.ToLower(strings.TrimSpace(status)),
+		"approvalNote":   strings.TrimSpace(note),
+		"approvedAt":     now,
+		"updatedAt":      now,
+	}
+	if approvedBy != "" {
+		if approverID, err := primitive.ObjectIDFromHex(approvedBy); err == nil {
+			updates["approvedBy"] = approverID
+		}
+	}
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": objectID}, bson.M{"$set": updates})
+	if err != nil {
+		return models.Attendance{}, err
+	}
+	if result.MatchedCount == 0 {
+		return models.Attendance{}, mongo.ErrNoDocuments
 	}
 	return r.FindByID(ctx, id)
 }
@@ -290,7 +392,10 @@ func (r *attendanceRepo) List(ctx context.Context, filter models.AttendanceFilte
 		}
 	}
 	if filter.Status != "" {
-		query["status"] = filter.Status
+		query["status"] = strings.ToLower(filter.Status)
+	}
+	if filter.Approval != "" {
+		query["approvalStatus"] = strings.ToLower(filter.Approval)
 	}
 	if !filter.From.IsZero() || !filter.To.IsZero() {
 		rangeQuery := bson.M{}
@@ -301,6 +406,9 @@ func (r *attendanceRepo) List(ctx context.Context, filter models.AttendanceFilte
 			rangeQuery["$lte"] = filter.To
 		}
 		query["clockIn"] = rangeQuery
+	}
+	if filter.Search != "" {
+		query["deviceInfo"] = bson.M{"$regex": filter.Search, "$options": "i"}
 	}
 	count, err := r.collection.CountDocuments(ctx, query)
 	if err != nil {
@@ -330,11 +438,11 @@ func (r *attendanceRepo) Summary(ctx context.Context) (models.AttendanceSummary,
 	if err != nil {
 		return models.AttendanceSummary{}, err
 	}
-	totalPresent, err := r.collection.CountDocuments(ctx, bson.M{"status": "clocked-in"})
+	totalPresent, err := r.collection.CountDocuments(ctx, bson.M{"approvalStatus": "approved"})
 	if err != nil {
 		return models.AttendanceSummary{}, err
 	}
-	totalClockOuts, err := r.collection.CountDocuments(ctx, bson.M{"status": "clocked-out"})
+	totalClockOuts, err := r.collection.CountDocuments(ctx, bson.M{"clockOut": bson.M{"$exists": true}})
 	if err != nil {
 		return models.AttendanceSummary{}, err
 	}
@@ -363,4 +471,53 @@ func (r *attendanceRepo) RecentByEmployee(ctx context.Context, employeeID string
 		items = append(items, attendance)
 	}
 	return items, cur.Err()
+}
+
+func (r *attendanceRepo) ListByEmployee(ctx context.Context, employeeID string, limit int64) ([]models.Attendance, error) {
+	if limit < 1 {
+		limit = 100
+	}
+	return r.RecentByEmployee(ctx, employeeID, limit)
+}
+
+func (r *officeRepo) Get(ctx context.Context) (models.OfficeSettings, error) {
+	ctx, cancel := timeoutContext(ctx)
+	defer cancel()
+	var settings models.OfficeSettings
+	err := r.collection.FindOne(ctx, bson.M{}).Decode(&settings)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		now := time.Now()
+		return models.OfficeSettings{
+			OfficeStartTime:  "09:00",
+			OfficeEndTime:    "18:00",
+			GraceMinutes:     15,
+			MinimumWorkHours: 8,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}, nil
+	}
+	return settings, err
+}
+
+func (r *officeRepo) Upsert(ctx context.Context, input models.OfficeSettings) (models.OfficeSettings, error) {
+	ctx, cancel := timeoutContext(ctx)
+	defer cancel()
+	now := time.Now()
+	input.UpdatedAt = now
+	if input.CreatedAt.IsZero() {
+		input.CreatedAt = now
+	}
+	update := bson.M{"$set": bson.M{
+		"officeStartTime":  input.OfficeStartTime,
+		"officeEndTime":    input.OfficeEndTime,
+		"graceMinutes":     input.GraceMinutes,
+		"minimumWorkHours": input.MinimumWorkHours,
+		"updatedAt":        input.UpdatedAt,
+	}, "$setOnInsert": bson.M{"createdAt": input.CreatedAt}}
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After).SetUpsert(true)
+	var saved models.OfficeSettings
+	if err := r.collection.FindOneAndUpdate(ctx, bson.M{}, update, opts).Decode(&saved); err != nil {
+		return models.OfficeSettings{}, err
+	}
+	return saved, nil
 }

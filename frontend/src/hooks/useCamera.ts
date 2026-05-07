@@ -20,12 +20,30 @@ export function useCamera() {
       throw new Error("Camera access is not supported in this browser");
     }
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "user",
-      },
-      audio: false,
-    });
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "user",
+        },
+        audio: false,
+      });
+    } catch (error) {
+      try {
+        // Fallback for devices/browsers where facingMode cannot resolve camera.
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      } catch {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Requested camera device not found";
+        setCameraError(message);
+        throw new Error(message);
+      }
+    }
 
     streamRef.current = stream;
     setCameraActive(true);

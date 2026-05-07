@@ -1,18 +1,33 @@
-import { MoonStar, SunMedium } from "lucide-react";
+import { Menu, MoonStar, SunMedium } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import type { User } from "../../types";
 
-export function Navbar({ title, user }: { title: string; user: User }) {
+export function Navbar({
+  title,
+  user,
+  onOpenSidebar,
+}: {
+  title: string;
+  user: User;
+  onOpenSidebar: () => void;
+}) {
   const { theme, toggleTheme } = useTheme();
 
   return (
     <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/70 px-5 py-4 backdrop-blur-xl">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onOpenSidebar}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10 lg:hidden"
+            aria-label="Open sidebar"
+          >
+            <Menu className="h-4 w-4" />
+          </button>
           <div className="text-xs uppercase tracking-[0.3em] text-cyan-200/70">
             {user.role}
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">
+          <h1 className="text-xl font-semibold tracking-tight text-white sm:text-2xl md:text-3xl">
             {title}
           </h1>
         </div>
