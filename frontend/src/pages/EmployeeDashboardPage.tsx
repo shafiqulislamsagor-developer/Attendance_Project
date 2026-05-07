@@ -1,5 +1,5 @@
 import { Camera, MapPin, RefreshCcw, Upload } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import toast from "react-hot-toast";
 import { StatCard } from "../components/dashboard/StatCard";
 import { AppLayout } from "../components/layout/AppLayout";
@@ -9,10 +9,21 @@ import { useGeolocation } from "../hooks/useGeolocation";
 import {
   clockIn,
   clockOut,
+  myAttendanceSummary,
   recentAttendance,
   resolveUploadUrl,
 } from "../lib/api";
-import type { Attendance } from "../types";
+import { buildDeviceInfoString, buildDevicePayload } from "../lib/device";
+import type { Attendance, EmployeeAttendanceProfile } from "../types";
+
+function toHours(minutes?: number) {
+  if (!minutes) {
+    return "0h 0m";
+  }
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h ${m}m`;
+}
 
 export function EmployeeDashboardPage() {
   const { user } = useAuth();
@@ -30,21 +41,28 @@ export function EmployeeDashboardPage() {
     requestLocation,
     setLocation,
   } = useGeolocation();
+
   const [recentLogs, setRecentLogs] = useState<Attendance[]>([]);
+  const [summary, setSummary] = useState<EmployeeAttendanceProfile | null>(null);
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
+  const [deviceLabel, setDeviceLabel] = useState("Loading device info...");
 
   const activeAttendance =
-    recentLogs.find((entry) => entry.status === "clocked-in") ?? null;
+    recentLogs.find((entry) => !entry.clockOut && entry.approvalStatus === "pending") ?? null;
 
   const loadRecent = async () => {
     if (!user) {
       return;
     }
     try {
-      const items = await recentAttendance(user.id, 8);
+      const [items, profile] = await Promise.all([
+        recentAttendance(user.id, 8),
+        myAttendanceSummary(),
+      ]);
       setRecentLogs(items);
+      setSummary(profile);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to load attendance",
@@ -53,8 +71,18 @@ export function EmployeeDashboardPage() {
   };
 
   useEffect(() => {
+    buildDevicePayload()
+      .then((payload) => {
+        setDeviceLabel(`${payload.platform} | ${payload.deviceId}`);
+      })
+      .catch(() => {
+        setDeviceLabel("Unknown device");
+      });
+  }, []);
+
+  useEffect(() => {
     loadRecent();
-    const interval = window.setInterval(loadRecent, 20000);
+    const interval = window.setInterval(loadRecent, 25000);
     return () => window.clearInterval(interval);
   }, [user?.id]);
 
@@ -66,8 +94,17 @@ export function EmployeeDashboardPage() {
     try {
       const coords = await requestLocation();
       setLocation(coords);
-      await openCamera();
-      toast.success("Location and camera ready");
+
+      try {
+        await openCamera();
+        toast.success("Location and camera ready");
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? `${error.message}. Upload a selfie image instead.`
+            : "Camera unavailable. Upload a selfie image instead.",
+        );
+      }
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Unable to prepare clock in",
@@ -84,15 +121,24 @@ export function EmployeeDashboardPage() {
     }
     setBusy(true);
     try {
-      const file = capturedFile ?? (await capturePhoto());
+      let file = capturedFile;
+      if (!file && cameraActive) {
+        file = await capturePhoto();
+      }
+      if (!file) {
+        throw new Error("Selfie is required. Capture or upload an image");
+      }
       const formData = new FormData();
+      const deviceInfo = await buildDeviceInfoString();
+
       formData.append("employeeId", user.id);
       formData.append("latitude", String(location.latitude));
       formData.append("longitude", String(location.longitude));
-      formData.append("deviceInfo", navigator.userAgent);
+      formData.append("deviceInfo", deviceInfo);
       formData.append("image", file);
+
       await clockIn(formData);
-      toast.success("Clock in recorded");
+      toast.success("Attendance submitted for approval");
       setCapturedFile(null);
       stopCamera();
       await loadRecent();
@@ -103,6 +149,15 @@ export function EmployeeDashboardPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleUploadSelfie = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    setCapturedFile(file);
+    toast.success("Selfie selected");
   };
 
   const captureSelfie = async () => {
@@ -118,9 +173,6 @@ export function EmployeeDashboardPage() {
   };
 
   const submitClockOut = async () => {
-    if (!user) {
-      return;
-    }
     if (!activeAttendance) {
       toast.error("No active attendance found");
       return;
@@ -128,14 +180,16 @@ export function EmployeeDashboardPage() {
     setBusy(true);
     try {
       const coords = await requestLocation();
+      const deviceInfo = await buildDeviceInfoString();
       setLocation(coords);
+
       await clockOut({
         attendanceId: activeAttendance.id,
         latitude: coords.latitude,
         longitude: coords.longitude,
-        deviceInfo: navigator.userAgent,
+        deviceInfo,
       });
-      toast.success("Clock out recorded");
+      toast.success("Clock out submitted for approval");
       await loadRecent();
     } catch (error) {
       toast.error(
@@ -150,45 +204,25 @@ export function EmployeeDashboardPage() {
     <AppLayout title="Employee Dashboard">
       <div className="space-y-8">
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard label="Present Days" value={summary?.totalPresentDays ?? 0} />
+          <StatCard label="Absent Days" value={summary?.totalAbsentDays ?? 0} />
+          <StatCard label="Pending Approvals" value={summary?.pendingApprovals ?? 0} />
+          <StatCard label="Rejected" value={summary?.totalRejectedAttendance ?? 0} />
+          <StatCard label="Late Days" value={summary?.totalLateDays ?? 0} />
           <StatCard
-            label="Session status"
-            value={activeAttendance ? "Clocked in" : "Ready"}
-            helper={
-              activeAttendance
-                ? "Active attendance detected"
-                : "Start a new session"
-            }
+            label="Average Work Hours"
+            value={toHours(summary?.averageWorkDuration)}
           />
-          <StatCard
-            label="Location"
-            value={location ? "Captured" : "Pending"}
-            helper={
-              location
-                ? `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`
-                : locationError || "Permission required"
-            }
-          />
-          <StatCard
-            label="Camera"
-            value={cameraActive ? "Open" : "Closed"}
-            helper={cameraError || "Selfie capture ready"}
-          />
-          <StatCard
-            label="Logs"
-            value={recentLogs.length}
-            helper="Recent attendance entries"
-          />
+          <StatCard label="Today Status" value={summary?.todayStatus || "absent"} />
+          <StatCard label="Device" value={deviceLabel} helper="Used for attendance validation" />
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1fr_1.1fr]">
           <div className="rounded-4xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
             <div className="mb-6">
-              <h2 className="text-2xl font-semibold text-white">
-                Clock in / out
-              </h2>
+              <h2 className="text-2xl font-semibold text-white">Smart Clock In / Out</h2>
               <p className="mt-1 text-sm text-slate-400">
-                Follow the location permission, open camera, capture selfie,
-                then send everything together.
+                Capture live location, selfie proof, then submit attendance for admin approval.
               </p>
             </div>
 
@@ -199,7 +233,7 @@ export function EmployeeDashboardPage() {
                 className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-60"
               >
                 <MapPin className="h-4 w-4" />
-                {preparing ? "Preparing..." : "Start clock in"}
+                {preparing ? "Preparing..." : "Step 1: Capture location + camera"}
               </button>
 
               <button
@@ -208,8 +242,20 @@ export function EmployeeDashboardPage() {
                 className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-60"
               >
                 <Camera className="h-4 w-4" />
-                Capture selfie
+                Step 2A: Capture selfie
               </button>
+
+              <label className="block">
+                <span className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">
+                  Step 2B: Upload from gallery
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleUploadSelfie}
+                  className="input"
+                />
+              </label>
 
               <button
                 onClick={submitClockIn}
@@ -217,7 +263,7 @@ export function EmployeeDashboardPage() {
                 className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-400/20 bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:opacity-60"
               >
                 <Upload className="h-4 w-4" />
-                {busy ? "Submitting..." : "Submit clock in"}
+                {busy ? "Submitting..." : "Step 3: Submit attendance"}
               </button>
 
               <button
@@ -236,24 +282,19 @@ export function EmployeeDashboardPage() {
                 value={
                   location
                     ? `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`
-                    : "Waiting for permission"
+                    : locationError || "Waiting for permission"
                 }
               />
-              <InfoBox
-                title="Device"
-                value={navigator.userAgent.slice(0, 64)}
-              />
+              <InfoBox title="Camera" value={cameraError || (cameraActive ? "Open" : "Closed")} />
             </div>
           </div>
 
           <div className="rounded-4xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-2xl font-semibold text-white">
-                  Camera preview
-                </h2>
+                <h2 className="text-2xl font-semibold text-white">Camera preview</h2>
                 <p className="mt-1 text-sm text-slate-400">
-                  Open the camera, capture a selfie, and verify your identity.
+                  Preview and upload proof image for attendance verification.
                 </p>
               </div>
               <button
@@ -275,14 +316,7 @@ export function EmployeeDashboardPage() {
 
             {capturedFile ? (
               <div className="mt-4 rounded-3xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-50">
-                Captured file ready: {capturedFile.name}
-              </div>
-            ) : null}
-
-            {activeAttendance ? (
-              <div className="mt-4 rounded-3xl border border-cyan-400/20 bg-cyan-400/10 p-4 text-sm text-cyan-50">
-                Active attendance detected from{" "}
-                {new Date(activeAttendance.clockIn).toLocaleString()}.
+                Proof image ready: {capturedFile.name}
               </div>
             ) : null}
           </div>
@@ -290,11 +324,9 @@ export function EmployeeDashboardPage() {
 
         <section className="rounded-4xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
           <div className="mb-5">
-            <h2 className="text-2xl font-semibold text-white">
-              Recent attendance
-            </h2>
+            <h2 className="text-2xl font-semibold text-white">Attendance History</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Latest clock in/out events for your account.
+              Clock in/out, work duration, approval status and location logs.
             </p>
           </div>
 
@@ -319,17 +351,15 @@ export function EmployeeDashboardPage() {
                 </div>
                 <div className="space-y-2 p-4 text-sm text-slate-300">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-white">
-                      {entry.status}
-                    </span>
+                    <span className="font-medium text-white">{entry.status}</span>
                     <span className="rounded-full border border-white/10 px-2 py-1 text-xs text-slate-400">
-                      {new Date(entry.clockIn).toLocaleDateString()}
+                      {entry.approvalStatus || "pending"}
                     </span>
                   </div>
-                  <div>{new Date(entry.clockIn).toLocaleTimeString()}</div>
-                  <div>
-                    {entry.latitude.toFixed(4)}, {entry.longitude.toFixed(4)}
-                  </div>
+                  <div>{new Date(entry.clockIn).toLocaleString()}</div>
+                  <div>{toHours(entry.workDuration)}</div>
+                  <div>{entry.city || ""} {entry.area ? `, ${entry.area}` : ""}</div>
+                  <div>Late: {entry.lateMinutes || 0}m | OT: {entry.overtimeMinutes || 0}m</div>
                 </div>
               </div>
             ))}
@@ -349,9 +379,7 @@ function InfoBox({ title, value }: { title: string; value: string }) {
   return (
     <div className="rounded-3xl border border-white/10 bg-slate-950/40 p-4">
       <div className="text-sm text-slate-400">{title}</div>
-      <div className="mt-2 wrap-break-word text-sm font-medium text-white">
-        {value}
-      </div>
+      <div className="mt-2 wrap-break-word text-sm font-medium text-white">{value}</div>
     </div>
   );
 }

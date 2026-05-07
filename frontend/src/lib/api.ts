@@ -1,11 +1,14 @@
 import axios from "axios";
 import type {
   Attendance,
+  AttendanceAnalytics,
   AttendanceSummary,
   AuthResponse,
   ClockOutValues,
   EmployeeFormValues,
+  EmployeeAttendanceProfile,
   LoginValues,
+  OfficeSettings,
   User,
 } from "../types";
 
@@ -124,6 +127,37 @@ export async function recentAttendance(employeeId: string, limit = 10) {
 
 export async function attendanceSummary() {
   const response = await api.get<AttendanceSummary>("/attendance/summary");
+  return response.data;
+}
+
+export async function approveAttendance(
+  attendanceId: string,
+  payload: { action: "approve" | "reject" | "suspicious"; status?: string; note?: string },
+) {
+  const response = await api.post<Attendance>(
+    `/attendance/${attendanceId}/approval`,
+    payload,
+  );
+  return response.data;
+}
+
+export async function attendanceAnalytics() {
+  const response = await api.get<AttendanceAnalytics>("/attendance/analytics");
+  return response.data;
+}
+
+export async function myAttendanceSummary() {
+  const response = await api.get<EmployeeAttendanceProfile>("/attendance/my-summary");
+  return response.data;
+}
+
+export async function getOfficeSettings() {
+  const response = await api.get<OfficeSettings>("/office-settings");
+  return response.data;
+}
+
+export async function updateOfficeSettings(values: OfficeSettings) {
+  const response = await api.put<OfficeSettings>("/office-settings", values);
   return response.data;
 }
 
