@@ -23,9 +23,16 @@ type Service interface {
 }
 
 type Collections struct {
-	Users       *mongo.Collection
-	Attendances *mongo.Collection
-	Office      *mongo.Collection
+	Users           *mongo.Collection
+	Sessions        *mongo.Collection
+	Attendances     *mongo.Collection
+	Departments     *mongo.Collection
+	Shifts          *mongo.Collection
+	Leaves          *mongo.Collection
+	LeaveBalances   *mongo.Collection
+	Office          *mongo.Collection
+	OfficeLocations  *mongo.Collection
+	AuditLogs       *mongo.Collection
 }
 
 type service struct {
@@ -54,9 +61,16 @@ func New() Service {
 		client: client,
 		db:     db,
 		collections: Collections{
-			Users:       db.Collection("users"),
-			Attendances: db.Collection("attendances"),
-			Office:      db.Collection("office_settings"),
+			Users:          db.Collection("users"),
+			Sessions:       db.Collection("sessions"),
+			Attendances:    db.Collection("attendances"),
+			Departments:    db.Collection("departments"),
+			Shifts:         db.Collection("shifts"),
+			Leaves:         db.Collection("leave_requests"),
+			LeaveBalances:  db.Collection("leave_balances"),
+			Office:         db.Collection("office_settings"),
+			OfficeLocations: db.Collection("office_locations"),
+			AuditLogs:      db.Collection("audit_logs"),
 		},
 	}
 }

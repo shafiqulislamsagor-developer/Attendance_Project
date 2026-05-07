@@ -14,9 +14,10 @@ type contextKey string
 const authUserKey contextKey = "authUser"
 
 type AuthUser struct {
-	ID    string
-	Email string
-	Role  models.Role
+	ID        string
+	Email     string
+	Role      models.Role
+	SessionID string
 }
 
 func WithAuth(secret string) func(http.Handler) http.Handler {
@@ -37,7 +38,11 @@ func WithAuth(secret string) func(http.Handler) http.Handler {
 				utils.JSONError(w, http.StatusUnauthorized, "invalid token")
 				return
 			}
-			user := AuthUser{ID: claims.UserID, Email: claims.Email, Role: models.Role(claims.Role)}
+			if claims.TokenType != "access" {
+				utils.JSONError(w, http.StatusUnauthorized, "invalid token type")
+				return
+			}
+			user := AuthUser{ID: claims.UserID, Email: claims.Email, Role: models.Role(claims.Role), SessionID: claims.SessionID}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authUserKey, user)))
 		})
 	}

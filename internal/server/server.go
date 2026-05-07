@@ -24,6 +24,11 @@ type Server struct {
 	employeeHandler   *handlers.EmployeeHandler
 	attendanceHandler *handlers.AttendanceHandler
 	officeHandler     *handlers.OfficeHandler
+	departmentHandler *handlers.DepartmentHandler
+	shiftHandler      *handlers.ShiftHandler
+	leaveHandler      *handlers.LeaveHandler
+	officeLocationHandler *handlers.OfficeLocationHandler
+	auditHandler      *handlers.AuditHandler
 }
 
 func NewServer() *http.Server {
@@ -35,12 +40,23 @@ func NewServer() *http.Server {
 
 	db := database.New()
 	userRepo := repositories.NewUserRepository(db)
+	sessionRepo := repositories.NewSessionRepository(db)
 	attendanceRepo := repositories.NewAttendanceRepository(db)
 	officeRepo := repositories.NewOfficeRepository(db)
-	authSvc := services.NewAuthService(userRepo, cfg)
+	departmentRepo := repositories.NewDepartmentRepository(db)
+	shiftRepo := repositories.NewShiftRepository(db)
+	leaveRepo := repositories.NewLeaveRepository(db)
+	officeLocationRepo := repositories.NewOfficeLocationRepository(db)
+	auditRepo := repositories.NewAuditRepository(db)
+	authSvc := services.NewAuthService(userRepo, sessionRepo, cfg)
 	employeeSvc := services.NewEmployeeService(userRepo, attendanceRepo)
-	attendanceSvc := services.NewAttendanceService(attendanceRepo, userRepo, officeRepo, cfg)
+	attendanceSvc := services.NewAttendanceService(attendanceRepo, userRepo, officeRepo, officeLocationRepo, cfg)
 	officeSvc := services.NewOfficeService(officeRepo)
+	departmentSvc := services.NewDepartmentService(departmentRepo)
+	shiftSvc := services.NewShiftService(shiftRepo)
+	leaveSvc := services.NewLeaveService(leaveRepo, userRepo)
+	officeLocationSvc := services.NewOfficeLocationService(officeLocationRepo)
+	auditSvc := services.NewAuditService(auditRepo)
 
 	app := &Server{
 		port:              port,
@@ -50,6 +66,11 @@ func NewServer() *http.Server {
 		employeeHandler:   handlers.NewEmployeeHandler(employeeSvc),
 		attendanceHandler: handlers.NewAttendanceHandler(attendanceSvc),
 		officeHandler:     handlers.NewOfficeHandler(officeSvc),
+		departmentHandler: handlers.NewDepartmentHandler(departmentSvc),
+		shiftHandler:      handlers.NewShiftHandler(shiftSvc),
+		leaveHandler:      handlers.NewLeaveHandler(leaveSvc),
+		officeLocationHandler: handlers.NewOfficeLocationHandler(officeLocationSvc),
+		auditHandler:      handlers.NewAuditHandler(auditSvc),
 	}
 
 	if err := authSvc.BootstrapAdmin(context.Background()); err != nil {

@@ -11,8 +11,10 @@ import {
   getMe,
   loadUser,
   login as loginRequest,
+  logoutAllSessions,
+  logoutSession,
   saveUser,
-  setAuthToken,
+  setAuthTokens,
 } from "../lib/api";
 import type { LoginValues, User } from "../types";
 
@@ -21,7 +23,8 @@ type AuthContextValue = {
   token: string | null;
   loading: boolean;
   login: (values: LoginValues) => Promise<User>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
 
@@ -70,17 +73,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (values: LoginValues) => {
     const response = await loginRequest(values);
-    setAuthToken(response.token);
+    const accessToken = response.accessToken ?? response.token;
+    setAuthTokens(accessToken, response.refreshToken);
     saveUser(response.user);
-    setTokenState(response.token);
+    setTokenState(accessToken);
     setUser(response.user);
     return response.user;
   };
 
-  const logout = () => {
-    clearAuthToken();
-    setUser(null);
-    setTokenState(null);
+  const logout = async () => {
+    try {
+      await logoutSession();
+    } finally {
+      clearAuthToken();
+      setUser(null);
+      setTokenState(null);
+    }
+  };
+
+  const logoutAll = async () => {
+    try {
+      await logoutAllSessions();
+    } finally {
+      clearAuthToken();
+      setUser(null);
+      setTokenState(null);
+    }
   };
 
   const refreshUser = async () => {
@@ -94,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, loading, login, logout, refreshUser }}
+      value={{ user, token, loading, login, logout, logoutAll, refreshUser }}
     >
       {children}
     </AuthContext.Provider>

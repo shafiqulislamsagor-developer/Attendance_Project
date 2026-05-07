@@ -9,8 +9,9 @@ import (
 type Role string
 
 const (
-	RoleAdmin    Role = "admin"
-	RoleEmployee Role = "employee"
+	RoleSuperAdmin Role = "super_admin"
+	RoleAdmin      Role = "admin"
+	RoleEmployee   Role = "employee"
 )
 
 type User struct {
@@ -20,8 +21,14 @@ type User struct {
 	Email        string             `bson:"email" json:"email"`
 	PasswordHash string             `bson:"passwordHash" json:"-"`
 	Role         Role               `bson:"role" json:"role"`
+	Status       string             `bson:"status,omitempty" json:"status,omitempty"`
 	EmployeeCode string             `bson:"employeeCode,omitempty" json:"employeeCode,omitempty"`
 	Department   string             `bson:"department,omitempty" json:"department,omitempty"`
+	DepartmentID string             `bson:"departmentId,omitempty" json:"departmentId,omitempty"`
+	ShiftID      string             `bson:"shiftId,omitempty" json:"shiftId,omitempty"`
+	Address      string             `bson:"address,omitempty" json:"address,omitempty"`
+	EmergencyContact string          `bson:"emergencyContact,omitempty" json:"emergencyContact,omitempty"`
+	ProfileImage string             `bson:"profileImage,omitempty" json:"profileImage,omitempty"`
 	IsActive     bool               `bson:"isActive" json:"isActive"`
 	IsDelete     bool               `bson:"isDelete" json:"isDelete"`
 	CreatedAt    time.Time          `bson:"createdAt" json:"createdAt"`
@@ -29,24 +36,35 @@ type User struct {
 }
 
 type CreateUserInput struct {
-	Name         string `json:"name"`
-	Phone        string `json:"phone"`
-	Email        string `json:"email"`
-	Password     string `json:"password"`
-	Role         Role   `json:"role"`
-	EmployeeCode string `json:"employeeCode"`
-	Department   string `json:"department"`
+	Name             string `json:"name"`
+	Phone            string `json:"phone"`
+	Email            string `json:"email"`
+	Password         string `json:"password"`
+	Role             Role   `json:"role"`
+	EmployeeCode     string `json:"employeeCode"`
+	Department       string `json:"department"`
+	DepartmentID     string `json:"departmentId"`
+	ShiftID          string `json:"shiftId"`
+	Address          string `json:"address"`
+	EmergencyContact string `json:"emergencyContact"`
+	ProfileImage     string `json:"profileImage"`
 }
 
 type UpdateUserInput struct {
-	Name         string `json:"name"`
-	Phone        string `json:"phone"`
-	Email        string `json:"email"`
-	Password     string `json:"password"`
-	Role         Role   `json:"role"`
-	EmployeeCode string `json:"employeeCode"`
-	Department   string `json:"department"`
-	IsActive     *bool  `json:"isActive"`
+	Name             string `json:"name"`
+	Phone            string `json:"phone"`
+	Email            string `json:"email"`
+	Password         string `json:"password"`
+	Role             Role   `json:"role"`
+	EmployeeCode     string `json:"employeeCode"`
+	Department       string `json:"department"`
+	DepartmentID     string `json:"departmentId"`
+	ShiftID          string `json:"shiftId"`
+	Address          string `json:"address"`
+	EmergencyContact string `json:"emergencyContact"`
+	ProfileImage     string `json:"profileImage"`
+	Status           string `json:"status"`
+	IsActive         *bool  `json:"isActive"`
 }
 
 type LoginInput struct {
@@ -55,8 +73,37 @@ type LoginInput struct {
 }
 
 type AuthResponse struct {
-	Token string `json:"token"`
-	User  User   `json:"user"`
+	Token        string `json:"token"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	ExpiresIn    int64  `json:"expiresIn"`
+	User         User   `json:"user"`
+}
+
+type RefreshTokenInput struct {
+	RefreshToken string `json:"refreshToken"`
+}
+
+type SessionMetadata struct {
+	DeviceID   string `json:"deviceId"`
+	DeviceInfo string `json:"deviceInfo"`
+	IPAddress  string `json:"ipAddress"`
+	UserAgent  string `json:"userAgent"`
+}
+
+type Session struct {
+	ID               primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	UserID           primitive.ObjectID `bson:"userId" json:"userId"`
+	RefreshTokenHash string             `bson:"refreshTokenHash" json:"-"`
+	DeviceID         string             `bson:"deviceId,omitempty" json:"deviceId,omitempty"`
+	DeviceInfo       string             `bson:"deviceInfo,omitempty" json:"deviceInfo,omitempty"`
+	IPAddress        string             `bson:"ipAddress,omitempty" json:"ipAddress,omitempty"`
+	UserAgent        string             `bson:"userAgent,omitempty" json:"userAgent,omitempty"`
+	ExpiresAt        time.Time          `bson:"expiresAt" json:"expiresAt"`
+	RevokedAt        *time.Time         `bson:"revokedAt,omitempty" json:"revokedAt,omitempty"`
+	LastUsedAt       *time.Time         `bson:"lastUsedAt,omitempty" json:"lastUsedAt,omitempty"`
+	CreatedAt        time.Time          `bson:"createdAt" json:"createdAt"`
+	UpdatedAt        time.Time          `bson:"updatedAt" json:"updatedAt"`
 }
 
 type Attendance struct {
@@ -66,6 +113,7 @@ type Attendance struct {
 	ClockOut         *time.Time          `bson:"clockOut,omitempty" json:"clockOut,omitempty"`
 	Latitude         float64             `bson:"latitude" json:"latitude"`
 	Longitude        float64             `bson:"longitude" json:"longitude"`
+	IsOutsideOffice  bool                `bson:"isOutsideOffice" json:"isOutsideOffice"`
 	Country          string              `bson:"country,omitempty" json:"country,omitempty"`
 	City             string              `bson:"city,omitempty" json:"city,omitempty"`
 	Area             string              `bson:"area,omitempty" json:"area,omitempty"`

@@ -1,10 +1,16 @@
 import {
   CalendarDays,
   CircleX,
+  ClipboardList,
   Fingerprint,
   LayoutDashboard,
   LogOut,
+  MapPinned,
+  ShieldCheck,
+  TimerReset,
+  TreePalm,
   Users,
+  Workflow,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import type { User } from "../../types";
@@ -15,20 +21,31 @@ const baseLink =
 export function Sidebar({
   user,
   onLogout,
+  onLogoutAll,
   onClose,
 }: {
   user: User;
-  onLogout: () => void;
+  onLogout: () => Promise<void> | void;
+  onLogoutAll: () => Promise<void> | void;
   onClose?: () => void;
 }) {
   const links =
-    user.role === "admin"
+    user.role === "employee"
       ? [
+          { to: "/employee", label: "Dashboard", icon: Fingerprint },
+          { to: "/employee/leaves", label: "Leaves", icon: TreePalm },
+        ]
+      : [
           { to: "/admin", label: "Overview", icon: LayoutDashboard },
           { to: "/employees", label: "Employees", icon: Users },
           { to: "/attendance", label: "Attendance", icon: CalendarDays },
-        ]
-      : [{ to: "/employee", label: "Dashboard", icon: Fingerprint }];
+          { to: "/departments", label: "Departments", icon: Workflow },
+          { to: "/shifts", label: "Shifts", icon: TimerReset },
+          { to: "/leaves", label: "Leaves", icon: TreePalm },
+          { to: "/geofence", label: "Geofence", icon: MapPinned },
+          { to: "/audit-logs", label: "Audit Logs", icon: ClipboardList },
+          { to: "/board", label: "Live Board", icon: ShieldCheck },
+        ];
 
   return (
     <aside className="flex h-full w-full flex-col border-r border-white/10 bg-slate-950/95 p-5 text-white backdrop-blur-xl lg:w-72">
@@ -96,6 +113,13 @@ export function Sidebar({
         >
           <LogOut className="h-4 w-4" />
           Logout
+        </button>
+        <button
+          onClick={onLogoutAll}
+          className="mt-3 inline-flex items-center gap-2 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-400/20"
+        >
+          <ShieldCheck className="h-4 w-4" />
+          Logout all devices
         </button>
       </div>
     </aside>

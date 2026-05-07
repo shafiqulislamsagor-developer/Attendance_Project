@@ -36,7 +36,7 @@ export function LoginPage() {
     try {
       const user = await login(values);
       toast.success(`Welcome back, ${user.name}`);
-      navigate(user.role === "admin" ? "/admin" : "/employee", {
+      navigate(user.role === "employee" ? "/employee" : "/admin", {
         replace: true,
       });
     } catch (error) {

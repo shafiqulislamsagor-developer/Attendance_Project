@@ -71,7 +71,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input.Email = strings.TrimSpace(input.Email)
-	response, err := h.service.Login(r.Context(), input)
+	response, err := h.service.Login(r.Context(), input, requestSessionMetadata(r))
 	if err != nil {
 		utils.JSONError(w, http.StatusUnauthorized, err.Error())
 		return
@@ -85,7 +85,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, ok := middleware.UserFromContext(r.Context())
-	if !ok || user.Role != models.RoleAdmin {
+	if !ok || (user.Role != models.RoleAdmin && user.Role != models.RoleSuperAdmin) {
 		utils.JSONError(w, http.StatusForbidden, "forbidden")
 		return
 	}
@@ -114,6 +114,58 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	utils.JSON(w, http.StatusOK, profile)
+}
+
+func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.JSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var input models.RefreshTokenInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		utils.JSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	response, err := h.service.Refresh(r.Context(), input, requestSessionMetadata(r))
+	if err != nil {
+		utils.JSONError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, response)
+}
+
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.JSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	user, ok := middleware.UserFromContext(r.Context())
+	if !ok {
+		utils.JSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if err := h.service.Logout(r.Context(), user.SessionID); err != nil {
+		utils.JSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, map[string]bool{"loggedOut": true})
+}
+
+func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.JSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	user, ok := middleware.UserFromContext(r.Context())
+	if !ok {
+		utils.JSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if err := h.service.LogoutAll(r.Context(), user.ID); err != nil {
+		utils.JSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	utils.JSON(w, http.StatusOK, map[string]bool{"loggedOutAll": true})
 }
 
 func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -449,4 +501,20 @@ func (h *AttendanceHandler) parseClockForm(r *http.Request) (models.ClockInInput
 	input.ImageData = bytes
 	input.ImageType = header.Header.Get("Content-Type")
 	return input, nil
+}
+
+func requestSessionMetadata(r *http.Request) models.SessionMetadata {
+	ipAddress := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+	if ipAddress == "" {
+		ipAddress = strings.TrimSpace(r.Header.Get("X-Real-Ip"))
+	}
+	if ipAddress == "" {
+		ipAddress = strings.TrimSpace(strings.Split(r.RemoteAddr, ":")[0])
+	}
+	return models.SessionMetadata{
+		DeviceID:   strings.TrimSpace(r.Header.Get("X-Device-Id")),
+		DeviceInfo: strings.TrimSpace(r.Header.Get("X-Device-Info")),
+		IPAddress:  ipAddress,
+		UserAgent:  strings.TrimSpace(r.UserAgent()),
+	}
 }

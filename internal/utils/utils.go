@@ -1,7 +1,10 @@
 package utils
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,9 +27,11 @@ type ErrorResponse struct {
 }
 
 type Claims struct {
-	UserID string `json:"userId"`
-	Email  string `json:"email"`
-	Role   string `json:"role"`
+	UserID    string `json:"userId"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	TokenType string `json:"tokenType"`
+	SessionID string `json:"sessionId"`
 	jwt.RegisteredClaims
 }
 
@@ -52,11 +57,13 @@ func ComparePassword(hashedPassword, password string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
 }
 
-func GenerateToken(secret string, user models.User, ttl time.Duration) (string, error) {
+func GenerateToken(secret string, user models.User, ttl time.Duration, tokenType, sessionID string) (string, error) {
 	claims := Claims{
-		UserID: user.ID.Hex(),
-		Email:  user.Email,
-		Role:   string(user.Role),
+		UserID:    user.ID.Hex(),
+		Email:     user.Email,
+		Role:      string(user.Role),
+		TokenType: tokenType,
+		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.ID.Hex(),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
@@ -79,6 +86,22 @@ func ParseToken(secret, tokenString string) (*Claims, error) {
 		return nil, errors.New("invalid token")
 	}
 	return claims, nil
+}
+
+func HashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+func RandomToken(length int) (string, error) {
+	if length < 16 {
+		length = 32
+	}
+	buffer := make([]byte, length)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buffer), nil
 }
 
 func ValidateName(value string) error {
