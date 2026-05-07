@@ -7,6 +7,8 @@ import (
 	"os"
 	"time"
 
+	"go-test/internal/config"
+
 	_ "github.com/joho/godotenv/autoload"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -14,27 +16,46 @@ import (
 
 type Service interface {
 	Health() map[string]string
+	Client() *mongo.Client
+	DB() *mongo.Database
+	Collections() Collections
+	Close(ctx context.Context) error
+}
+
+type Collections struct {
+	Users       *mongo.Collection
+	Attendances *mongo.Collection
 }
 
 type service struct {
-	db *mongo.Client
+	client      *mongo.Client
+	db          *mongo.Database
+	collections Collections
 }
 
 var (
 	host = os.Getenv("BLUEPRINT_DB_HOST")
 	port = os.Getenv("BLUEPRINT_DB_PORT")
-	//database = os.Getenv("BLUEPRINT_DB_DATABASE")
 )
 
 func New() Service {
-	client, err := mongo.Connect(context.Background(), options.Client().ApplyURI(fmt.Sprintf("mongodb://%s:%s", host, port)))
-
+	cfg := config.Load()
+	mongoURI := cfg.MongoURI
+	if host != "" && port != "" && os.Getenv("MONGO_URI") == "" {
+		mongoURI = fmt.Sprintf("mongodb://%s:%s", host, port)
+	}
+	client, err := mongo.Connect(context.Background(), options.Client().ApplyURI(mongoURI))
 	if err != nil {
 		log.Fatal(err)
-
 	}
+	db := client.Database(cfg.MongoDatabase)
 	return &service{
-		db: client,
+		client: client,
+		db:     db,
+		collections: Collections{
+			Users:       db.Collection("users"),
+			Attendances: db.Collection("attendances"),
+		},
 	}
 }
 
@@ -42,12 +63,28 @@ func (s *service) Health() map[string]string {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	err := s.db.Ping(ctx, nil)
-	if err != nil {
+	if err := s.client.Ping(ctx, nil); err != nil {
 		log.Fatalf("db down: %v", err)
 	}
 
 	return map[string]string{
-		"message": "It's healthy",
+		"message":  "It's healthy",
+		"database": s.db.Name(),
 	}
+}
+
+func (s *service) Client() *mongo.Client {
+	return s.client
+}
+
+func (s *service) DB() *mongo.Database {
+	return s.db
+}
+
+func (s *service) Collections() Collections {
+	return s.collections
+}
+
+func (s *service) Close(ctx context.Context) error {
+	return s.client.Disconnect(ctx)
 }
