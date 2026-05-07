@@ -26,7 +26,11 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("/api/v1/attendance/clock-out", s.withAuth(http.HandlerFunc(s.attendanceHandler.ClockOut)))
 	mux.Handle("/api/v1/attendance", s.withAuth(s.requireAdmin(http.HandlerFunc(s.attendanceHandler.List))))
 	mux.Handle("/api/v1/attendance/summary", s.withAuth(s.requireAdmin(http.HandlerFunc(s.attendanceHandler.Summary))))
+	mux.Handle("/api/v1/attendance/analytics", s.withAuth(s.requireAdmin(http.HandlerFunc(s.attendanceHandler.Analytics))))
 	mux.Handle("/api/v1/attendance/recent", s.withAuth(http.HandlerFunc(s.attendanceHandler.RecentByEmployee)))
+	mux.Handle("/api/v1/attendance/my-summary", s.withAuth(http.HandlerFunc(s.attendanceHandler.EmployeeSummary)))
+	mux.Handle("/api/v1/attendance/", s.withAuth(s.requireAdmin(http.HandlerFunc(s.attendanceHandler.Approve))))
+	mux.Handle("/api/v1/office-settings", s.withAuth(s.requireAdmin(http.HandlerFunc(s.officeHandler.GetOrUpdate))))
 
 	return s.corsMiddleware(mux)
 }

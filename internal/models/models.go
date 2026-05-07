@@ -30,6 +30,7 @@ type User struct {
 
 type CreateUserInput struct {
 	Name         string `json:"name"`
+	Phone        string `json:"phone"`
 	Email        string `json:"email"`
 	Password     string `json:"password"`
 	Role         Role   `json:"role"`

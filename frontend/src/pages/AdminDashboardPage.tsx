@@ -90,7 +90,7 @@ export function AdminDashboardPage() {
               <div className="text-slate-400">Loading chart...</div>
             ) : (
               <div className="space-y-3">
-                {analytics?.weeklyAttendanceChart.map((point) => (
+                {(analytics?.weeklyAttendanceChart ?? []).map((point) => (
                   <div key={point.label}>
                     <div className="mb-1 flex justify-between text-xs text-slate-300">
                       <span>{point.label}</span>
@@ -181,7 +181,7 @@ export function AdminDashboardPage() {
           <div className="rounded-4xl border border-white/10 bg-white/5 p-6">
             <h3 className="mb-4 text-xl font-semibold text-white">Employee Performance</h3>
             <div className="space-y-3">
-              {analytics?.employeePerformanceChart.slice(0, 8).map((metric) => (
+              {(analytics?.employeePerformanceChart ?? []).slice(0, 8).map((metric) => (
                 <div key={metric.employeeId} className="flex justify-between text-sm text-slate-200">
                   <Link to={`/employees/${metric.employeeId}`} className="text-cyan-300 hover:text-cyan-200">
                     {metric.name}

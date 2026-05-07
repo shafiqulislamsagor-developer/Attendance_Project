@@ -23,6 +23,7 @@ type Server struct {
 	authHandler       *handlers.AuthHandler
 	employeeHandler   *handlers.EmployeeHandler
 	attendanceHandler *handlers.AttendanceHandler
+	officeHandler     *handlers.OfficeHandler
 }
 
 func NewServer() *http.Server {
@@ -35,9 +36,11 @@ func NewServer() *http.Server {
 	db := database.New()
 	userRepo := repositories.NewUserRepository(db)
 	attendanceRepo := repositories.NewAttendanceRepository(db)
+	officeRepo := repositories.NewOfficeRepository(db)
 	authSvc := services.NewAuthService(userRepo, cfg)
-	employeeSvc := services.NewEmployeeService(userRepo)
-	attendanceSvc := services.NewAttendanceService(attendanceRepo, userRepo, cfg)
+	employeeSvc := services.NewEmployeeService(userRepo, attendanceRepo)
+	attendanceSvc := services.NewAttendanceService(attendanceRepo, userRepo, officeRepo, cfg)
+	officeSvc := services.NewOfficeService(officeRepo)
 
 	app := &Server{
 		port:              port,
@@ -46,6 +49,7 @@ func NewServer() *http.Server {
 		authHandler:       handlers.NewAuthHandler(authSvc, employeeSvc),
 		employeeHandler:   handlers.NewEmployeeHandler(employeeSvc),
 		attendanceHandler: handlers.NewAttendanceHandler(attendanceSvc),
+		officeHandler:     handlers.NewOfficeHandler(officeSvc),
 	}
 
 	if err := authSvc.BootstrapAdmin(context.Background()); err != nil {

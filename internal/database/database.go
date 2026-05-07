@@ -25,6 +25,7 @@ type Service interface {
 type Collections struct {
 	Users       *mongo.Collection
 	Attendances *mongo.Collection
+	Office      *mongo.Collection
 }
 
 type service struct {
@@ -55,6 +56,7 @@ func New() Service {
 		collections: Collections{
 			Users:       db.Collection("users"),
 			Attendances: db.Collection("attendances"),
+			Office:      db.Collection("office_settings"),
 		},
 	}
 }
