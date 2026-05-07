@@ -18,8 +18,23 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.HandleFunc("/health", s.healthHandler)
 	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(s.cfg.UploadDir))))
 	mux.HandleFunc("/api/v1/auth/login", s.authHandler.Login)
+	mux.HandleFunc("/api/v1/auth/refresh", s.authHandler.Refresh)
 	mux.Handle("/api/v1/auth/register", s.withAuth(http.HandlerFunc(s.authHandler.Register)))
+	mux.Handle("/api/v1/auth/logout", s.withAuth(http.HandlerFunc(s.authHandler.Logout)))
+	mux.Handle("/api/v1/auth/logout-all", s.withAuth(http.HandlerFunc(s.authHandler.LogoutAll)))
 	mux.Handle("/api/v1/me", s.withAuth(http.HandlerFunc(s.authHandler.Me)))
+	mux.Handle("/api/v1/departments", s.withAuth(s.requireAdmin(http.HandlerFunc(s.departmentHandler.ListOrCreate))))
+	mux.Handle("/api/v1/departments/", s.withAuth(s.requireAdmin(http.HandlerFunc(s.departmentHandler.Detail))))
+	mux.Handle("/api/v1/shifts", s.withAuth(s.requireAdmin(http.HandlerFunc(s.shiftHandler.ListOrCreate))))
+	mux.Handle("/api/v1/shifts/", s.withAuth(s.requireAdmin(http.HandlerFunc(s.shiftHandler.Detail))))
+	mux.Handle("/api/v1/leaves", s.withAuth(http.HandlerFunc(s.leaveHandler.Request)))
+	mux.Handle("/api/v1/leaves/me", s.withAuth(http.HandlerFunc(s.leaveHandler.MyRequests)))
+	mux.Handle("/api/v1/leaves/admin", s.withAuth(s.requireAdmin(http.HandlerFunc(s.leaveHandler.List))))
+	mux.Handle("/api/v1/leaves/", s.withAuth(s.requireAdmin(http.HandlerFunc(s.leaveHandler.Review))))
+	mux.Handle("/api/v1/leave-balances", s.withAuth(s.requireAdmin(http.HandlerFunc(s.leaveHandler.Balance))))
+	mux.Handle("/api/v1/office-locations", s.withAuth(s.requireAdmin(http.HandlerFunc(s.officeLocationHandler.ListOrSave))))
+	mux.Handle("/api/v1/office-locations/active", s.withAuth(http.HandlerFunc(s.officeLocationHandler.Active)))
+	mux.Handle("/api/v1/audit-logs", s.withAuth(s.requireAdmin(http.HandlerFunc(s.auditHandler.List))))
 	mux.Handle("/api/v1/employees", s.withAuth(s.requireAdmin(http.HandlerFunc(s.employeeHandler.ListOrCreate))))
 	mux.Handle("/api/v1/employees/", s.withAuth(s.requireAdmin(http.HandlerFunc(s.employeeHandler.Detail))))
 	mux.Handle("/api/v1/attendance/clock-in", s.withAuth(http.HandlerFunc(s.attendanceHandler.ClockIn)))
@@ -40,7 +55,7 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 }
 
 func (s *Server) requireAdmin(next http.Handler) http.Handler {
-	return middleware.RequireRole(models.RoleAdmin)(next)
+	return middleware.RequireRole(models.RoleAdmin, models.RoleSuperAdmin)(next)
 }
 
 func (s *Server) rootHandler(w http.ResponseWriter, r *http.Request) {

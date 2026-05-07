@@ -60,14 +60,23 @@ export function AdminDashboardPage() {
     <AppLayout title="Admin HR Dashboard">
       <div className="space-y-8">
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Total Employees" value={analytics?.totalEmployees ?? 0} />
-          <StatCard label="Present Today" value={analytics?.presentToday ?? 0} />
+          <StatCard
+            label="Total Employees"
+            value={analytics?.totalEmployees ?? 0}
+          />
+          <StatCard
+            label="Present Today"
+            value={analytics?.presentToday ?? 0}
+          />
           <StatCard label="Absent Today" value={analytics?.absentToday ?? 0} />
           <StatCard
             label="Pending Approvals"
             value={analytics?.pendingApprovals ?? 0}
           />
-          <StatCard label="Late Employees" value={analytics?.lateEmployees ?? 0} />
+          <StatCard
+            label="Late Employees"
+            value={analytics?.lateEmployees ?? 0}
+          />
           <StatCard
             label="Perfect Timing"
             value={analytics?.perfectTimingEmployees ?? 0}
@@ -84,8 +93,12 @@ export function AdminDashboardPage() {
 
         <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <div className="rounded-4xl border border-white/10 bg-white/5 p-6">
-            <h2 className="text-2xl font-semibold text-white">Weekly Attendance</h2>
-            <p className="mb-4 text-sm text-slate-400">Approved attendance trend for last 7 days.</p>
+            <h2 className="text-2xl font-semibold text-white">
+              Weekly Attendance
+            </h2>
+            <p className="mb-4 text-sm text-slate-400">
+              Approved attendance trend for last 7 days.
+            </p>
             {loading ? (
               <div className="text-slate-400">Loading chart...</div>
             ) : (
@@ -100,7 +113,7 @@ export function AdminDashboardPage() {
                       <div
                         className="h-2 rounded-full bg-cyan-400"
                         style={{
-                          width: `${Math.min(100, (point.value / Math.max(1, analytics.totalEmployees || 1)) * 100)}%`,
+                          width: `${Math.min(100, (point.value / Math.max(1, analytics?.totalEmployees || 1)) * 100)}%`,
                         }}
                       />
                     </div>
@@ -111,12 +124,18 @@ export function AdminDashboardPage() {
           </div>
 
           <div className="rounded-4xl border border-white/10 bg-white/5 p-6">
-            <h2 className="text-2xl font-semibold text-white">Office Time Rules</h2>
-            <p className="mb-4 text-sm text-slate-400">Manage late, overtime and minimum work-hour policies.</p>
+            <h2 className="text-2xl font-semibold text-white">
+              Office Time Rules
+            </h2>
+            <p className="mb-4 text-sm text-slate-400">
+              Manage late, overtime and minimum work-hour policies.
+            </p>
             {office ? (
               <div className="space-y-4">
                 <label className="block">
-                  <span className="mb-1 block text-xs uppercase text-slate-400">Office Start</span>
+                  <span className="mb-1 block text-xs uppercase text-slate-400">
+                    Office Start
+                  </span>
                   <input
                     className="input"
                     value={office.officeStartTime}
@@ -126,7 +145,9 @@ export function AdminDashboardPage() {
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs uppercase text-slate-400">Office End</span>
+                  <span className="mb-1 block text-xs uppercase text-slate-400">
+                    Office End
+                  </span>
                   <input
                     className="input"
                     value={office.officeEndTime}
@@ -136,7 +157,9 @@ export function AdminDashboardPage() {
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs uppercase text-slate-400">Grace Minutes</span>
+                  <span className="mb-1 block text-xs uppercase text-slate-400">
+                    Grace Minutes
+                  </span>
                   <input
                     className="input"
                     type="number"
@@ -150,7 +173,9 @@ export function AdminDashboardPage() {
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs uppercase text-slate-400">Minimum Work Hours</span>
+                  <span className="mb-1 block text-xs uppercase text-slate-400">
+                    Minimum Work Hours
+                  </span>
                   <input
                     className="input"
                     type="number"
@@ -179,25 +204,43 @@ export function AdminDashboardPage() {
 
         <section className="grid gap-6 xl:grid-cols-2">
           <div className="rounded-4xl border border-white/10 bg-white/5 p-6">
-            <h3 className="mb-4 text-xl font-semibold text-white">Employee Performance</h3>
+            <h3 className="mb-4 text-xl font-semibold text-white">
+              Employee Performance
+            </h3>
             <div className="space-y-3">
-              {(analytics?.employeePerformanceChart ?? []).slice(0, 8).map((metric) => (
-                <div key={metric.employeeId} className="flex justify-between text-sm text-slate-200">
-                  <Link to={`/employees/${metric.employeeId}`} className="text-cyan-300 hover:text-cyan-200">
-                    {metric.name}
-                  </Link>
-                  <span>{Math.round(metric.value / 60)}h</span>
-                </div>
-              ))}
+              {(analytics?.employeePerformanceChart ?? [])
+                .slice(0, 8)
+                .map((metric) => (
+                  <div
+                    key={metric.employeeId}
+                    className="flex justify-between text-sm text-slate-200"
+                  >
+                    <Link
+                      to={`/employees/${metric.employeeId}`}
+                      className="text-cyan-300 hover:text-cyan-200"
+                    >
+                      {metric.name}
+                    </Link>
+                    <span>{Math.round(metric.value / 60)}h</span>
+                  </div>
+                ))}
             </div>
           </div>
           <div className="rounded-4xl border border-white/10 bg-white/5 p-6">
-            <h3 className="mb-4 text-xl font-semibold text-white">Quick Links</h3>
+            <h3 className="mb-4 text-xl font-semibold text-white">
+              Quick Links
+            </h3>
             <div className="grid gap-3">
-              <Link to="/attendance" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
+              <Link
+                to="/attendance"
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+              >
                 Review Attendance Approvals
               </Link>
-              <Link to="/employees" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
+              <Link
+                to="/employees"
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+              >
                 Open Employee Directory
               </Link>
             </div>

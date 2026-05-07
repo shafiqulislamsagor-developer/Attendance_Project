@@ -20,7 +20,10 @@ import (
 )
 
 type AuthService interface {
-	Login(ctx context.Context, input models.LoginInput) (models.AuthResponse, error)
+	Login(ctx context.Context, input models.LoginInput, metadata models.SessionMetadata) (models.AuthResponse, error)
+	Refresh(ctx context.Context, input models.RefreshTokenInput, metadata models.SessionMetadata) (models.AuthResponse, error)
+	Logout(ctx context.Context, sessionID string) error
+	LogoutAll(ctx context.Context, userID string) error
 	Register(ctx context.Context, input models.CreateUserInput, creatorRole models.Role) (models.User, error)
 	BootstrapAdmin(ctx context.Context) error
 }
@@ -51,9 +54,10 @@ type OfficeService interface {
 }
 
 type authService struct {
-	users  repositories.UserRepository
-	cfg    config.Config
-	secret string
+	users    repositories.UserRepository
+	sessions repositories.SessionRepository
+	cfg      config.Config
+	secret   string
 }
 
 type employeeService struct {
@@ -65,6 +69,7 @@ type attendanceService struct {
 	attendance repositories.AttendanceRepository
 	users      repositories.UserRepository
 	office     repositories.OfficeRepository
+	locations  repositories.OfficeLocationRepository
 	cfg        config.Config
 	httpClient *http.Client
 }
@@ -73,19 +78,20 @@ type officeService struct {
 	repo repositories.OfficeRepository
 }
 
-func NewAuthService(users repositories.UserRepository, cfg config.Config) AuthService {
-	return &authService{users: users, cfg: cfg, secret: cfg.JWTSecret}
+func NewAuthService(users repositories.UserRepository, sessions repositories.SessionRepository, cfg config.Config) AuthService {
+	return &authService{users: users, sessions: sessions, cfg: cfg, secret: cfg.JWTSecret}
 }
 
 func NewEmployeeService(users repositories.UserRepository, attendance repositories.AttendanceRepository) EmployeeService {
 	return &employeeService{users: users, attendance: attendance}
 }
 
-func NewAttendanceService(attendance repositories.AttendanceRepository, users repositories.UserRepository, office repositories.OfficeRepository, cfg config.Config) AttendanceService {
+func NewAttendanceService(attendance repositories.AttendanceRepository, users repositories.UserRepository, office repositories.OfficeRepository, locations repositories.OfficeLocationRepository, cfg config.Config) AttendanceService {
 	return &attendanceService{
 		attendance: attendance,
 		users:      users,
 		office:     office,
+		locations:  locations,
 		cfg:        cfg,
 		httpClient: &http.Client{Timeout: 5 * time.Second},
 	}
@@ -95,23 +101,52 @@ func NewOfficeService(repo repositories.OfficeRepository) OfficeService {
 	return &officeService{repo: repo}
 }
 
-func (s *authService) Login(ctx context.Context, input models.LoginInput) (models.AuthResponse, error) {
+func (s *authService) Login(ctx context.Context, input models.LoginInput, metadata models.SessionMetadata) (models.AuthResponse, error) {
 	user, err := s.users.FindByEmail(ctx, input.Email)
 	if err != nil {
 		return models.AuthResponse{}, errors.New("invalid credentials")
 	}
+	if !user.IsActive {
+		return models.AuthResponse{}, errors.New("account is inactive")
+	}
 	if err := utils.ComparePassword(user.PasswordHash, input.Password); err != nil {
 		return models.AuthResponse{}, errors.New("invalid credentials")
 	}
-	token, err := utils.GenerateToken(s.secret, user, s.cfg.TokenTTL)
+	refreshToken, err := utils.RandomToken(48)
 	if err != nil {
 		return models.AuthResponse{}, err
 	}
-	return models.AuthResponse{Token: token, User: user}, nil
+	now := time.Now()
+	session := models.Session{
+		UserID:           user.ID,
+		RefreshTokenHash: utils.HashToken(refreshToken),
+		DeviceID:         strings.TrimSpace(metadata.DeviceID),
+		DeviceInfo:       strings.TrimSpace(metadata.DeviceInfo),
+		IPAddress:        strings.TrimSpace(metadata.IPAddress),
+		UserAgent:        strings.TrimSpace(metadata.UserAgent),
+		ExpiresAt:        now.Add(s.cfg.RefreshTokenTTL),
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+	savedSession, err := s.sessions.Create(ctx, session)
+	if err != nil {
+		return models.AuthResponse{}, err
+	}
+	token, err := utils.GenerateToken(s.secret, user, s.cfg.TokenTTL, "access", savedSession.ID.Hex())
+	if err != nil {
+		return models.AuthResponse{}, err
+	}
+	return models.AuthResponse{
+		Token:        token,
+		AccessToken:  token,
+		RefreshToken: refreshToken,
+		ExpiresIn:    int64(s.cfg.TokenTTL.Seconds()),
+		User:         user,
+	}, nil
 }
 
 func (s *authService) Register(ctx context.Context, input models.CreateUserInput, creatorRole models.Role) (models.User, error) {
-	if creatorRole != models.RoleAdmin {
+	if creatorRole != models.RoleAdmin && creatorRole != models.RoleSuperAdmin {
 		return models.User{}, errors.New("forbidden")
 	}
 	return createUser(ctx, s.users, input)
@@ -127,7 +162,7 @@ func (s *authService) BootstrapAdmin(ctx context.Context) error {
 				Name:     "System Admin",
 				Email:    s.cfg.AdminEmail,
 				Password: s.cfg.AdminPassword,
-				Role:     models.RoleAdmin,
+				Role:     models.RoleSuperAdmin,
 			}); err != nil {
 				return err
 			}
@@ -150,7 +185,7 @@ func (s *employeeService) Get(ctx context.Context, id string) (models.User, erro
 }
 
 func (s *employeeService) Update(ctx context.Context, id string, input models.UpdateUserInput) (models.User, error) {
-	if input.Name == "" && input.Email == "" && input.Password == "" && input.Role == "" && input.EmployeeCode == "" && input.Department == "" && input.Phone == "" && input.IsActive == nil {
+	if input.Name == "" && input.Email == "" && input.Password == "" && input.Role == "" && input.EmployeeCode == "" && input.Department == "" && input.DepartmentID == "" && input.ShiftID == "" && input.Address == "" && input.EmergencyContact == "" && input.ProfileImage == "" && input.Status == "" && input.Phone == "" && input.IsActive == nil {
 		return models.User{}, errors.New("no fields to update")
 	}
 	if input.Email != "" {
@@ -232,11 +267,17 @@ func (s *attendanceService) ClockIn(ctx context.Context, input models.ClockInInp
 	if deviceInfo == "" {
 		deviceInfo = "unknown-device"
 	}
+	outsideOffice := false
+	if officeLocation, err := s.locations.GetActive(ctx); err == nil && officeLocation.RadiusMeters > 0 {
+		distance := distanceMeters(input.Latitude, input.Longitude, officeLocation.Latitude, officeLocation.Longitude)
+		outsideOffice = distance > float64(officeLocation.RadiusMeters)
+	}
 	attendance := models.Attendance{
 		EmployeeID:       objectID,
 		ClockIn:          now,
 		Latitude:         input.Latitude,
 		Longitude:        input.Longitude,
+		IsOutsideOffice:  outsideOffice,
 		Country:          country,
 		City:             city,
 		Area:             area,
@@ -484,8 +525,14 @@ func createUser(ctx context.Context, users repositories.UserRepository, input mo
 		Email:        strings.ToLower(strings.TrimSpace(input.Email)),
 		PasswordHash: hash,
 		Role:         role,
+		Status:       "active",
 		EmployeeCode: strings.TrimSpace(input.EmployeeCode),
 		Department:   strings.TrimSpace(input.Department),
+		DepartmentID: strings.TrimSpace(input.DepartmentID),
+		ShiftID:      strings.TrimSpace(input.ShiftID),
+		Address:      strings.TrimSpace(input.Address),
+		EmergencyContact: strings.TrimSpace(input.EmergencyContact),
+		ProfileImage: strings.TrimSpace(input.ProfileImage),
 		IsActive:     true,
 		IsDelete:     true,
 		CreatedAt:    now,

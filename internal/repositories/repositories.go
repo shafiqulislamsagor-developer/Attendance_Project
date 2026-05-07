@@ -37,6 +37,16 @@ type UserRepository interface {
 	ApplyDeletePolicy(ctx context.Context) error
 }
 
+type SessionRepository interface {
+	Create(ctx context.Context, session models.Session) (models.Session, error)
+	FindByID(ctx context.Context, id string) (models.Session, error)
+	FindByRefreshTokenHash(ctx context.Context, refreshTokenHash string) (models.Session, error)
+	UpdateRefreshToken(ctx context.Context, id string, refreshTokenHash string, expiresAt time.Time, lastUsedAt time.Time) (models.Session, error)
+	Revoke(ctx context.Context, id string, revokedAt time.Time) error
+	RevokeAllByUser(ctx context.Context, userID string, revokedAt time.Time) error
+	ListActiveByUser(ctx context.Context, userID string) ([]models.Session, error)
+}
+
 type AttendanceRepository interface {
 	Create(ctx context.Context, attendance models.Attendance) (models.Attendance, error)
 	FindByID(ctx context.Context, id string) (models.Attendance, error)
@@ -55,6 +65,43 @@ type OfficeRepository interface {
 	Upsert(ctx context.Context, input models.OfficeSettings) (models.OfficeSettings, error)
 }
 
+type DepartmentRepository interface {
+	Create(ctx context.Context, department models.Department) (models.Department, error)
+	List(ctx context.Context) ([]models.Department, error)
+	FindByID(ctx context.Context, id string) (models.Department, error)
+	Update(ctx context.Context, id string, department models.Department) (models.Department, error)
+	Delete(ctx context.Context, id string) error
+}
+
+type ShiftRepository interface {
+	Create(ctx context.Context, shift models.Shift) (models.Shift, error)
+	List(ctx context.Context) ([]models.Shift, error)
+	FindByID(ctx context.Context, id string) (models.Shift, error)
+	Update(ctx context.Context, id string, shift models.Shift) (models.Shift, error)
+	Delete(ctx context.Context, id string) error
+}
+
+type LeaveRepository interface {
+	CreateRequest(ctx context.Context, request models.LeaveRequest) (models.LeaveRequest, error)
+	ListByEmployee(ctx context.Context, employeeID string) ([]models.LeaveRequest, error)
+	List(ctx context.Context) ([]models.LeaveRequest, error)
+	FindByID(ctx context.Context, id string) (models.LeaveRequest, error)
+	Review(ctx context.Context, id string, status string, reviewerID string, reason string) (models.LeaveRequest, error)
+	GetBalance(ctx context.Context, employeeID string, year int) (models.LeaveBalance, error)
+	UpsertBalance(ctx context.Context, balance models.LeaveBalance) (models.LeaveBalance, error)
+}
+
+type OfficeLocationRepository interface {
+	List(ctx context.Context) ([]models.OfficeLocation, error)
+	Upsert(ctx context.Context, location models.OfficeLocation) (models.OfficeLocation, error)
+	GetActive(ctx context.Context) (models.OfficeLocation, error)
+}
+
+type AuditRepository interface {
+	Create(ctx context.Context, log models.AuditLog) (models.AuditLog, error)
+	List(ctx context.Context, limit int64) ([]models.AuditLog, error)
+}
+
 type userRepo struct {
 	collection *mongo.Collection
 }
@@ -64,6 +111,31 @@ type attendanceRepo struct {
 }
 
 type officeRepo struct {
+	collection *mongo.Collection
+}
+
+type sessionRepo struct {
+	collection *mongo.Collection
+}
+
+type departmentRepo struct {
+	collection *mongo.Collection
+}
+
+type shiftRepo struct {
+	collection *mongo.Collection
+}
+
+type leaveRepo struct {
+	collection *mongo.Collection
+	balance    *mongo.Collection
+}
+
+type officeLocationRepo struct {
+	collection *mongo.Collection
+}
+
+type auditRepo struct {
 	collection *mongo.Collection
 }
 
@@ -77,6 +149,30 @@ func NewAttendanceRepository(db database.Service) AttendanceRepository {
 
 func NewOfficeRepository(db database.Service) OfficeRepository {
 	return &officeRepo{collection: db.Collections().Office}
+}
+
+func NewSessionRepository(db database.Service) SessionRepository {
+	return &sessionRepo{collection: db.Collections().Sessions}
+}
+
+func NewDepartmentRepository(db database.Service) DepartmentRepository {
+	return &departmentRepo{collection: db.Collections().Departments}
+}
+
+func NewShiftRepository(db database.Service) ShiftRepository {
+	return &shiftRepo{collection: db.Collections().Shifts}
+}
+
+func NewLeaveRepository(db database.Service) LeaveRepository {
+	return &leaveRepo{collection: db.Collections().Leaves, balance: db.Collections().LeaveBalances}
+}
+
+func NewOfficeLocationRepository(db database.Service) OfficeLocationRepository {
+	return &officeLocationRepo{collection: db.Collections().OfficeLocations}
+}
+
+func NewAuditRepository(db database.Service) AuditRepository {
+	return &auditRepo{collection: db.Collections().AuditLogs}
 }
 
 func timeoutContext(parent context.Context) (context.Context, context.CancelFunc) {
@@ -191,6 +287,24 @@ func (r *userRepo) Update(ctx context.Context, id string, input models.UpdateUse
 	if input.Department != "" {
 		updates["department"] = input.Department
 	}
+	if input.DepartmentID != "" {
+		updates["departmentId"] = input.DepartmentID
+	}
+	if input.ShiftID != "" {
+		updates["shiftId"] = input.ShiftID
+	}
+	if input.Address != "" {
+		updates["address"] = input.Address
+	}
+	if input.EmergencyContact != "" {
+		updates["emergencyContact"] = input.EmergencyContact
+	}
+	if input.ProfileImage != "" {
+		updates["profileImage"] = input.ProfileImage
+	}
+	if input.Status != "" {
+		updates["status"] = input.Status
+	}
 	if input.Password != "" {
 		hash, err := utils.HashPassword(input.Password)
 		if err != nil {
@@ -235,7 +349,7 @@ func (r *userRepo) FindAdmin(ctx context.Context) (models.User, error) {
 	ctx, cancel := timeoutContext(ctx)
 	defer cancel()
 	var user models.User
-	err := r.collection.FindOne(ctx, bson.M{"role": models.RoleAdmin}).Decode(&user)
+	err := r.collection.FindOne(ctx, bson.M{"role": bson.M{"$in": []models.Role{models.RoleAdmin, models.RoleSuperAdmin}}}).Decode(&user)
 	return user, err
 }
 

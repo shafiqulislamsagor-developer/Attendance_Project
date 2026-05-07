@@ -11,7 +11,7 @@ export function AppLayout({
   title: string;
   children: ReactNode;
 }) {
-  const { user, logout } = useAuth();
+  const { user, logout, logoutAll } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
@@ -40,6 +40,7 @@ export function AppLayout({
           <Sidebar
             user={user}
             onLogout={logout}
+            onLogoutAll={logoutAll}
             onClose={() => setSidebarOpen(false)}
           />
         </div>

@@ -1,4 +1,4 @@
-export type Role = "admin" | "employee";
+export type Role = "super_admin" | "admin" | "employee";
 
 export interface User {
   id: string;
@@ -6,8 +6,14 @@ export interface User {
   phone?: string;
   email: string;
   role: Role;
+  status?: string;
   employeeCode?: string;
   department?: string;
+  departmentId?: string;
+  shiftId?: string;
+  address?: string;
+  emergencyContact?: string;
+  profileImage?: string;
   isActive?: boolean;
   isDelete?: boolean;
   createdAt?: string;
@@ -21,6 +27,7 @@ export interface Attendance {
   clockOut?: string;
   latitude: number;
   longitude: number;
+  isOutsideOffice?: boolean;
   image: string;
   status: string;
   approvalStatus?: string;
@@ -47,6 +54,9 @@ export interface AttendanceSummary {
 
 export interface AuthResponse {
   token: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
   user: User;
 }
 
@@ -63,6 +73,11 @@ export interface EmployeeFormValues {
   phone?: string;
   employeeCode: string;
   department: string;
+  departmentId?: string;
+  shiftId?: string;
+  address?: string;
+  emergencyContact?: string;
+  profileImage?: string;
 }
 
 export interface ClockOutValues {
@@ -79,6 +94,76 @@ export interface OfficeSettings {
   minimumWorkHours: number;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface Department {
+  id: string;
+  name: string;
+  code: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Shift {
+  id: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  graceMinutes: number;
+  minimumWorkHours: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LeaveRequest {
+  id: string;
+  employeeId: string;
+  leaveType: "sick" | "casual" | "paid" | "emergency" | string;
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  documentUrl?: string;
+  status: string;
+  rejectionReason?: string;
+  reviewedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LeaveBalance {
+  id?: string;
+  employeeId: string;
+  year: number;
+  sick: number;
+  casual: number;
+  paid: number;
+  emergency: number;
+}
+
+export interface OfficeLocation {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  address?: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  actorId?: string;
+  action: string;
+  entityType: string;
+  entityId?: string;
+  ipAddress?: string;
+  deviceInfo?: string;
+  metadata?: string;
+  createdAt: string;
 }
 
 export interface ChartPoint {

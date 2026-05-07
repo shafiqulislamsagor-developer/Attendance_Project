@@ -11,17 +11,18 @@ import (
 )
 
 type Config struct {
-	Port            string
-	MongoURI        string
-	MongoDatabase   string
-	JWTSecret       string
-	FrontendURL     string
-	UploadDir       string
-	MaxUploadSize   int64
-	TokenTTL        time.Duration
-	AdminEmail      string
-	AdminPassword   string
-	AdminSetupToken string
+	Port             string
+	MongoURI         string
+	MongoDatabase    string
+	JWTSecret        string
+	FrontendURL      string
+	UploadDir        string
+	MaxUploadSize    int64
+	TokenTTL         time.Duration
+	RefreshTokenTTL  time.Duration
+	AdminEmail       string
+	AdminPassword    string
+	AdminSetupToken  string
 }
 
 func Load() Config {
@@ -48,6 +49,7 @@ func Load() Config {
 		UploadDir:       envOrDefault("UPLOAD_DIR", "uploads"),
 		MaxUploadSize:   int64(envIntOrDefault("MAX_UPLOAD_MB", 10) * 1024 * 1024),
 		TokenTTL:        time.Duration(envIntOrDefault("JWT_TTL_HOURS", 24)) * time.Hour,
+		RefreshTokenTTL: time.Duration(envIntOrDefault("JWT_REFRESH_TTL_HOURS", 168)) * time.Hour,
 		AdminEmail:      strings.TrimSpace(os.Getenv("ADMIN_EMAIL")),
 		AdminPassword:   strings.TrimSpace(os.Getenv("ADMIN_PASSWORD")),
 		AdminSetupToken: strings.TrimSpace(os.Getenv("ADMIN_SETUP_TOKEN")),
