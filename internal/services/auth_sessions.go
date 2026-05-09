@@ -51,7 +51,7 @@ func (s *authService) Refresh(ctx context.Context, input models.RefreshTokenInpu
 		AccessToken:  accessToken,
 		RefreshToken: newRefreshToken,
 		ExpiresIn:    int64(s.cfg.TokenTTL.Seconds()),
-		User:         user,
+		User:         sanitizeUser(user),
 	}, nil
 }
 

@@ -12,6 +12,7 @@ import (
 	"go-test/internal/handlers"
 	"go-test/internal/repositories"
 	"go-test/internal/services"
+	"go-test/internal/websocket"
 )
 
 type Server struct {
@@ -19,6 +20,7 @@ type Server struct {
 
 	db  database.Service
 	cfg config.Config
+	ws  *websocket.Manager
 
 	authHandler       *handlers.AuthHandler
 	employeeHandler   *handlers.EmployeeHandler
@@ -58,10 +60,13 @@ func NewServer() *http.Server {
 	officeLocationSvc := services.NewOfficeLocationService(officeLocationRepo)
 	auditSvc := services.NewAuditService(auditRepo)
 
+	wsManager := websocket.NewManager()
+
 	app := &Server{
 		port:              port,
 		db:                db,
 		cfg:               cfg,
+		ws:                wsManager,
 		authHandler:       handlers.NewAuthHandler(authSvc, employeeSvc),
 		employeeHandler:   handlers.NewEmployeeHandler(employeeSvc),
 		attendanceHandler: handlers.NewAttendanceHandler(attendanceSvc),
@@ -76,6 +81,9 @@ func NewServer() *http.Server {
 	if err := authSvc.BootstrapAdmin(context.Background()); err != nil {
 		panic(fmt.Sprintf("failed to bootstrap admin: %v", err))
 	}
+
+	// Start WebSocket manager
+	wsManager.Start(context.Background())
 
 	return &http.Server{
 		Addr:         fmt.Sprintf(":%d", app.port),

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Skeleton } from "../ui/Skeleton";
 
 export function DataTable({ children }: { children: ReactNode }) {
   return (
@@ -70,8 +71,21 @@ export function LoadingState({
   return (
     <tr>
       <DataTd colSpan={colSpan}>
-        <div className="py-10 text-center text-slate-400">
-          {message || "Loading..."}
+        <div className="space-y-4 py-4">
+          <div className="grid gap-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="grid gap-3 md:grid-cols-6">
+                <Skeleton className="h-4 md:col-span-2" />
+                <Skeleton className="h-4 md:col-span-1" />
+                <Skeleton className="h-4 md:col-span-1" />
+                <Skeleton className="h-4 md:col-span-1" />
+                <Skeleton className="h-4 md:col-span-1" />
+              </div>
+            ))}
+          </div>
+          {message ? (
+            <div className="text-center text-sm text-slate-400">{message}</div>
+          ) : null}
         </div>
       </DataTd>
     </tr>

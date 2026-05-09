@@ -10,6 +10,7 @@ import (
 	"go-test/internal/config"
 
 	_ "github.com/joho/godotenv/autoload"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -57,7 +58,7 @@ func New() Service {
 		log.Fatal(err)
 	}
 	db := client.Database(cfg.MongoDatabase)
-	return &service{
+	svc := &service{
 		client: client,
 		db:     db,
 		collections: Collections{
@@ -73,6 +74,8 @@ func New() Service {
 			AuditLogs:      db.Collection("audit_logs"),
 		},
 	}
+	svc.ensureIndexes()
+	return svc
 }
 
 func (s *service) Health() map[string]string {
@@ -99,6 +102,37 @@ func (s *service) DB() *mongo.Database {
 
 func (s *service) Collections() Collections {
 	return s.collections
+}
+
+func (s *service) ensureIndexes() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	indexModels := []struct {
+		collection *mongo.Collection
+		model      mongo.IndexModel
+	}{
+		{
+			collection: s.collections.Users,
+			model: mongo.IndexModel{
+				Keys:    bson.D{{Key: "employeeCode", Value: 1}},
+				Options: options.Index().SetUnique(true).SetSparse(true).SetName("uniq_employee_code"),
+			},
+		},
+		{
+			collection: s.collections.Departments,
+			model: mongo.IndexModel{
+				Keys:    bson.D{{Key: "code", Value: 1}},
+				Options: options.Index().SetUnique(true).SetSparse(true).SetName("uniq_department_code"),
+			},
+		},
+	}
+
+	for _, indexModel := range indexModels {
+		if _, err := indexModel.collection.Indexes().CreateOne(ctx, indexModel.model); err != nil {
+			log.Printf("warning: unable to ensure index on %s: %v", indexModel.collection.Name(), err)
+		}
+	}
 }
 
 func (s *service) Close(ctx context.Context) error {

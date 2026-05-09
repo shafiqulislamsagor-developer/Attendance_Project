@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import toast from "react-hot-toast";
 import { AppLayout } from "../components/layout/AppLayout";
+import { LocationMapPicker } from "../components/map/LocationMapPicker";
 import {
   DataTable,
   DataTableBody,
@@ -70,7 +71,7 @@ export function AdminGeofencePage() {
       return;
     }
     if (!form.latitude || !form.longitude) {
-      toast.error("Latitude and longitude are required");
+      toast.error("Pick a location on the map");
       return;
     }
     setSaving(true);
@@ -107,77 +108,95 @@ export function AdminGeofencePage() {
             </p>
           </div>
 
-          <form onSubmit={submit} className="grid gap-4 md:grid-cols-2">
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-300">
-                Location name
-              </span>
-              <input
-                className="input"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-300">
-                Allowed radius (meters)
-              </span>
-              <input
-                className="input"
-                type="number"
-                value={form.radiusMeters}
-                onChange={(e) =>
-                  setForm({ ...form, radiusMeters: Number(e.target.value) })
-                }
-              />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-300">
-                Latitude
-              </span>
-              <input
-                className="input"
-                type="number"
-                step="any"
-                value={form.latitude}
-                onChange={(e) =>
-                  setForm({ ...form, latitude: Number(e.target.value) })
-                }
-              />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-300">
-                Longitude
-              </span>
-              <input
-                className="input"
-                type="number"
-                step="any"
-                value={form.longitude}
-                onChange={(e) =>
-                  setForm({ ...form, longitude: Number(e.target.value) })
-                }
-              />
-            </label>
-            <label className="block md:col-span-2">
-              <span className="mb-2 block text-sm font-medium text-slate-300">
-                Address
-              </span>
-              <input
-                className="input"
-                value={form.address}
-                onChange={(e) => setForm({ ...form, address: e.target.value })}
-                placeholder="Office address or landmark"
-              />
-            </label>
-            <div className="md:col-span-2">
-              <button
-                type="submit"
-                disabled={saving}
-                className="w-full rounded-2xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-60"
-              >
-                {saving ? "Saving..." : "Save geofence"}
-              </button>
+          <form
+            onSubmit={submit}
+            className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]"
+          >
+            <div className="space-y-4 rounded-[1.75rem] border border-white/10 bg-slate-950/30 p-5">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-300">
+                  Location name
+                </span>
+                <input
+                  className="input"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="Main Office"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-300">
+                  Allowed radius (meters)
+                </span>
+                <input
+                  className="input"
+                  type="number"
+                  value={form.radiusMeters}
+                  onChange={(e) =>
+                    setForm({ ...form, radiusMeters: Number(e.target.value) })
+                  }
+                  placeholder="200"
+                />
+              </label>
+              <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-4">
+                <LocationMapPicker
+                  value={{
+                    latitude: form.latitude,
+                    longitude: form.longitude,
+                    address: form.address,
+                  }}
+                  onChange={(selection) =>
+                    setForm({
+                      ...form,
+                      latitude: selection.latitude,
+                      longitude: selection.longitude,
+                      address: selection.address,
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="rounded-[1.75rem] border border-white/10 bg-slate-950/30 p-5">
+              <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                    Latitude
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-white">
+                    {form.latitude ? form.latitude.toFixed(6) : "Select on map"}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                    Longitude
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-white">
+                    {form.longitude
+                      ? form.longitude.toFixed(6)
+                      : "Select on map"}
+                  </div>
+                </div>
+                <div className="sm:col-span-2 rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                    Address
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-white">
+                    {form.address ||
+                      "Auto-populated from the selected map point"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="w-full rounded-2xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-60"
+                >
+                  {saving ? "Saving..." : "Save geofence"}
+                </button>
+              </div>
             </div>
           </form>
         </section>

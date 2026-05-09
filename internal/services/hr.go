@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -100,13 +102,10 @@ func (s *departmentService) Get(ctx context.Context, id string) (models.Departme
 
 func (s *departmentService) Create(ctx context.Context, input models.Department) (models.Department, error) {
 	input.Name = strings.TrimSpace(input.Name)
-	input.Code = strings.ToUpper(strings.TrimSpace(input.Code))
 	if input.Name == "" {
 		return models.Department{}, errors.New("department name is required")
 	}
-	if input.Code == "" {
-		input.Code = strings.ReplaceAll(strings.ToUpper(strings.ReplaceAll(input.Name, " ", "_")), "__", "_")
-	}
+	input.Code = generateDepartmentCode(ctx, s.repo, input.Name)
 	now := time.Now()
 	input.IsActive = true
 	input.CreatedAt = now
@@ -125,9 +124,7 @@ func (s *departmentService) Update(ctx context.Context, id string, input models.
 	if input.Name != "" {
 		current.Name = strings.TrimSpace(input.Name)
 	}
-	if input.Code != "" {
-		current.Code = strings.ToUpper(strings.TrimSpace(input.Code))
-	}
+	
 	current.IsActive = input.IsActive || current.IsActive
 	return s.repo.Update(ctx, id, current)
 }
@@ -151,12 +148,12 @@ func (s *shiftService) Create(ctx context.Context, input models.Shift) (models.S
 	if input.Name == "" {
 		return models.Shift{}, errors.New("shift name is required")
 	}
-	if input.GraceMinutes < 0 {
-		input.GraceMinutes = 0
-	}
-	if input.MinimumWorkHours < 1 {
-		input.MinimumWorkHours = 8
-	}
+	input.BreakMinutes = maxInt64(0, input.BreakMinutes)
+	input.GraceMinutes = maxInt64(0, input.GraceMinutes)
+	officeMinutes, effectiveMinutes := calculateShiftDurations(input.StartTime, input.EndTime, input.BreakMinutes)
+	input.OfficeMinutes = officeMinutes
+	input.EffectiveMinutes = effectiveMinutes
+	input.MinimumWorkHours = maxInt64(1, effectiveMinutes/60)
 	now := time.Now()
 	input.IsActive = true
 	input.CreatedAt = now
@@ -181,12 +178,16 @@ func (s *shiftService) Update(ctx context.Context, id string, input models.Shift
 	if input.EndTime != "" {
 		current.EndTime = normalizeTimeString(input.EndTime, current.EndTime)
 	}
+	if input.BreakMinutes >= 0 {
+		current.BreakMinutes = input.BreakMinutes
+	}
 	if input.GraceMinutes > 0 {
 		current.GraceMinutes = input.GraceMinutes
 	}
-	if input.MinimumWorkHours > 0 {
-		current.MinimumWorkHours = input.MinimumWorkHours
-	}
+	officeMinutes, effectiveMinutes := calculateShiftDurations(current.StartTime, current.EndTime, current.BreakMinutes)
+	current.OfficeMinutes = officeMinutes
+	current.EffectiveMinutes = effectiveMinutes
+	current.MinimumWorkHours = maxInt64(1, effectiveMinutes/60)
 	if input.IsActive {
 		current.IsActive = true
 	}
@@ -213,12 +214,17 @@ func (s *leaveService) Request(ctx context.Context, employeeID string, input mod
 	if input.ToDate.Before(input.FromDate) {
 		return models.LeaveRequest{}, errors.New("invalid leave date range")
 	}
+	totalDays := int64(input.ToDate.Sub(input.FromDate).Hours()/24) + 1
+	if totalDays < 1 {
+		totalDays = 1
+	}
 	employeeObjectID, err := primitive.ObjectIDFromHex(employeeID)
 	if err != nil {
 		return models.LeaveRequest{}, err
 	}
 	now := time.Now()
 	input.EmployeeID = employeeObjectID
+	input.TotalDays = totalDays
 	input.Status = "pending"
 	input.CreatedAt = now
 	input.UpdatedAt = now
@@ -251,7 +257,7 @@ func (s *leaveService) Review(ctx context.Context, requestID string, reviewerID 
 		return models.LeaveRequest{}, err
 	}
 	if status == "approved" {
-		days := int64(request.ToDate.Sub(request.FromDate).Hours()/24) + 1
+		days := request.TotalDays
 		if days < 1 {
 			days = 1
 		}
@@ -323,6 +329,72 @@ func (s *auditService) Record(ctx context.Context, input models.AuditLog) (model
 		input.CreatedAt = time.Now()
 	}
 	return s.repo.Create(ctx, input)
+}
+
+func generateDepartmentCode(ctx context.Context, repo repositories.DepartmentRepository, name string) string {
+	items, err := repo.List(ctx)
+	if err != nil {
+		return fmt.Sprintf("DEP-%03d", time.Now().UnixNano()%1000)
+	}
+	prefix := departmentPrefix(name)
+	pattern := regexp.MustCompile(fmt.Sprintf(`^%s-(\d+)$`, regexp.QuoteMeta(prefix)))
+	var maxSequence int64
+	for _, item := range items {
+		match := pattern.FindStringSubmatch(strings.ToUpper(strings.TrimSpace(item.Code)))
+		if len(match) != 2 {
+			continue
+		}
+		sequence, err := strconv.ParseInt(match[1], 10, 64)
+		if err == nil && sequence > maxSequence {
+			maxSequence = sequence
+		}
+	}
+	return fmt.Sprintf("%s-%03d", prefix, maxSequence+1)
+}
+
+func departmentPrefix(name string) string {
+	switch {
+	case strings.Contains(strings.ToLower(name), "human"):
+		return "HR"
+	case strings.Contains(strings.ToLower(name), "marketing"):
+		return "MKT"
+	case strings.Contains(strings.ToLower(name), "it"):
+		return "IT"
+	case strings.Contains(strings.ToLower(name), "account"):
+		return "ACC"
+	case strings.Contains(strings.ToLower(name), "sales"):
+		return "SAL"
+	default:
+		cleaned := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(name), " ", ""))
+		if len(cleaned) > 4 {
+			cleaned = cleaned[:4]
+		}
+		if cleaned == "" {
+			cleaned = "DEP"
+		}
+		return cleaned
+	}
+}
+
+func calculateShiftDurations(startTime, endTime string, breakMinutes int64) (int64, int64) {
+	start, err := time.Parse("15:04", startTime)
+	if err != nil {
+		start = time.Date(2000, 1, 1, 9, 0, 0, 0, time.Local)
+	}
+	end, err := time.Parse("15:04", endTime)
+	if err != nil {
+		end = time.Date(2000, 1, 1, 18, 0, 0, 0, time.Local)
+	}
+	duration := end.Sub(start)
+	if duration < 0 {
+		duration += 24 * time.Hour
+	}
+	officeMinutes := int64(duration.Minutes())
+	effectiveMinutes := officeMinutes - maxInt64(0, breakMinutes)
+	if effectiveMinutes < 0 {
+		effectiveMinutes = 0
+	}
+	return officeMinutes, effectiveMinutes
 }
 
 func maxInt64(a, b int64) int64 {

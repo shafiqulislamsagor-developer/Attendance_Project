@@ -7,6 +7,7 @@ export interface User {
   email: string;
   role: Role;
   status?: string;
+  temporaryPassword?: string;
   employeeCode?: string;
   department?: string;
   departmentId?: string;
@@ -28,6 +29,7 @@ export interface Attendance {
   latitude: number;
   longitude: number;
   isOutsideOffice?: boolean;
+  geoFenceStatus?: string;
   image: string;
   status: string;
   approvalStatus?: string;
@@ -68,12 +70,12 @@ export interface LoginValues {
 export interface EmployeeFormValues {
   name: string;
   email: string;
-  password: string;
+  password?: string;
   role: Role;
   phone?: string;
-  employeeCode: string;
+  employeeCode?: string;
   department: string;
-  departmentId?: string;
+  departmentId: string;
   shiftId?: string;
   address?: string;
   emergencyContact?: string;
@@ -110,8 +112,11 @@ export interface Shift {
   name: string;
   startTime: string;
   endTime: string;
+  breakMinutes: number;
   graceMinutes: number;
   minimumWorkHours: number;
+  officeMinutes?: number;
+  effectiveMinutes?: number;
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -123,6 +128,7 @@ export interface LeaveRequest {
   leaveType: "sick" | "casual" | "paid" | "emergency" | string;
   fromDate: string;
   toDate: string;
+  totalDays?: number;
   reason: string;
   documentUrl?: string;
   status: string;

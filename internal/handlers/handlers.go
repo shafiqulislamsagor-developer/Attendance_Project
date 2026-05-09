@@ -113,6 +113,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		utils.JSONError(w, http.StatusNotFound, "user not found")
 		return
 	}
+	profile.TemporaryPassword = ""
 	utils.JSON(w, http.StatusOK, profile)
 }
 

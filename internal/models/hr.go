@@ -20,8 +20,11 @@ type Shift struct {
 	Name             string             `bson:"name" json:"name"`
 	StartTime        string             `bson:"startTime" json:"startTime"`
 	EndTime          string             `bson:"endTime" json:"endTime"`
+	BreakMinutes     int64              `bson:"breakMinutes" json:"breakMinutes"`
 	GraceMinutes     int64              `bson:"graceMinutes" json:"graceMinutes"`
 	MinimumWorkHours int64              `bson:"minimumWorkHours" json:"minimumWorkHours"`
+	OfficeMinutes    int64              `bson:"officeMinutes,omitempty" json:"officeMinutes,omitempty"`
+	EffectiveMinutes int64              `bson:"effectiveMinutes,omitempty" json:"effectiveMinutes,omitempty"`
 	IsActive         bool               `bson:"isActive" json:"isActive"`
 	CreatedAt        time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt        time.Time          `bson:"updatedAt" json:"updatedAt"`
@@ -33,6 +36,7 @@ type LeaveRequest struct {
 	LeaveType       string              `bson:"leaveType" json:"leaveType"`
 	FromDate        time.Time           `bson:"fromDate" json:"fromDate"`
 	ToDate          time.Time           `bson:"toDate" json:"toDate"`
+	TotalDays       int64               `bson:"totalDays,omitempty" json:"totalDays,omitempty"`
 	Reason          string              `bson:"reason" json:"reason"`
 	DocumentURL     string              `bson:"documentUrl,omitempty" json:"documentUrl,omitempty"`
 	Status          string              `bson:"status" json:"status"`

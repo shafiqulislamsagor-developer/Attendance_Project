@@ -13,7 +13,7 @@ import {
   recentAttendance,
   resolveUploadUrl,
 } from "../lib/api";
-import { buildDeviceInfoString, buildDevicePayload } from "../lib/device";
+import { buildDeviceInfoString, formatDeviceInfoLabel } from "../lib/device";
 import type { Attendance, EmployeeAttendanceProfile } from "../types";
 
 function toHours(minutes?: number) {
@@ -43,14 +43,18 @@ export function EmployeeDashboardPage() {
   } = useGeolocation();
 
   const [recentLogs, setRecentLogs] = useState<Attendance[]>([]);
-  const [summary, setSummary] = useState<EmployeeAttendanceProfile | null>(null);
+  const [summary, setSummary] = useState<EmployeeAttendanceProfile | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [deviceLabel, setDeviceLabel] = useState("Loading device info...");
 
   const activeAttendance =
-    recentLogs.find((entry) => !entry.clockOut && entry.approvalStatus === "pending") ?? null;
+    recentLogs.find(
+      (entry) => !entry.clockOut && entry.approvalStatus === "pending",
+    ) ?? null;
 
   const loadRecent = async () => {
     if (!user) {
@@ -71,9 +75,9 @@ export function EmployeeDashboardPage() {
   };
 
   useEffect(() => {
-    buildDevicePayload()
-      .then((payload) => {
-        setDeviceLabel(`${payload.platform} | ${payload.deviceId}`);
+    buildDeviceInfoString()
+      .then((value) => {
+        setDeviceLabel(formatDeviceInfoLabel(value));
       })
       .catch(() => {
         setDeviceLabel("Unknown device");
@@ -137,8 +141,17 @@ export function EmployeeDashboardPage() {
       formData.append("deviceInfo", deviceInfo);
       formData.append("image", file);
 
-      await clockIn(formData);
-      toast.success("Attendance submitted for approval");
+      const submitted = await clockIn(formData);
+      if (submitted.geoFenceStatus === "outside" || submitted.isOutsideOffice) {
+        toast(
+          "You are outside the allowed office area. This record requires review.",
+          {
+            icon: "⚠️",
+          },
+        );
+      } else {
+        toast.success("Attendance submitted for approval");
+      }
       setCapturedFile(null);
       stopCamera();
       await loadRecent();
@@ -204,25 +217,44 @@ export function EmployeeDashboardPage() {
     <AppLayout title="Employee Dashboard">
       <div className="space-y-8">
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Present Days" value={summary?.totalPresentDays ?? 0} />
+          <StatCard
+            label="Present Days"
+            value={summary?.totalPresentDays ?? 0}
+          />
           <StatCard label="Absent Days" value={summary?.totalAbsentDays ?? 0} />
-          <StatCard label="Pending Approvals" value={summary?.pendingApprovals ?? 0} />
-          <StatCard label="Rejected" value={summary?.totalRejectedAttendance ?? 0} />
+          <StatCard
+            label="Pending Approvals"
+            value={summary?.pendingApprovals ?? 0}
+          />
+          <StatCard
+            label="Rejected"
+            value={summary?.totalRejectedAttendance ?? 0}
+          />
           <StatCard label="Late Days" value={summary?.totalLateDays ?? 0} />
           <StatCard
             label="Average Work Hours"
             value={toHours(summary?.averageWorkDuration)}
           />
-          <StatCard label="Today Status" value={summary?.todayStatus || "absent"} />
-          <StatCard label="Device" value={deviceLabel} helper="Used for attendance validation" />
+          <StatCard
+            label="Today Status"
+            value={summary?.todayStatus || "absent"}
+          />
+          <StatCard
+            label="Device"
+            value={deviceLabel}
+            helper="Used for attendance validation"
+          />
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1fr_1.1fr]">
           <div className="rounded-4xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
             <div className="mb-6">
-              <h2 className="text-2xl font-semibold text-white">Smart Clock In / Out</h2>
+              <h2 className="text-2xl font-semibold text-white">
+                Smart Clock In / Out
+              </h2>
               <p className="mt-1 text-sm text-slate-400">
-                Capture live location, selfie proof, then submit attendance for admin approval.
+                Capture live location, selfie proof, then submit attendance for
+                admin approval.
               </p>
             </div>
 
@@ -233,7 +265,9 @@ export function EmployeeDashboardPage() {
                 className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-60"
               >
                 <MapPin className="h-4 w-4" />
-                {preparing ? "Preparing..." : "Step 1: Capture location + camera"}
+                {preparing
+                  ? "Preparing..."
+                  : "Step 1: Capture location + camera"}
               </button>
 
               <button
@@ -285,14 +319,19 @@ export function EmployeeDashboardPage() {
                     : locationError || "Waiting for permission"
                 }
               />
-              <InfoBox title="Camera" value={cameraError || (cameraActive ? "Open" : "Closed")} />
+              <InfoBox
+                title="Camera"
+                value={cameraError || (cameraActive ? "Open" : "Closed")}
+              />
             </div>
           </div>
 
           <div className="rounded-4xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-2xl font-semibold text-white">Camera preview</h2>
+                <h2 className="text-2xl font-semibold text-white">
+                  Camera preview
+                </h2>
                 <p className="mt-1 text-sm text-slate-400">
                   Preview and upload proof image for attendance verification.
                 </p>
@@ -324,7 +363,9 @@ export function EmployeeDashboardPage() {
 
         <section className="rounded-4xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
           <div className="mb-5">
-            <h2 className="text-2xl font-semibold text-white">Attendance History</h2>
+            <h2 className="text-2xl font-semibold text-white">
+              Attendance History
+            </h2>
             <p className="mt-1 text-sm text-slate-400">
               Clock in/out, work duration, approval status and location logs.
             </p>
@@ -351,15 +392,22 @@ export function EmployeeDashboardPage() {
                 </div>
                 <div className="space-y-2 p-4 text-sm text-slate-300">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-white">{entry.status}</span>
+                    <span className="font-medium text-white">
+                      {entry.status}
+                    </span>
                     <span className="rounded-full border border-white/10 px-2 py-1 text-xs text-slate-400">
                       {entry.approvalStatus || "pending"}
                     </span>
                   </div>
                   <div>{new Date(entry.clockIn).toLocaleString()}</div>
                   <div>{toHours(entry.workDuration)}</div>
-                  <div>{entry.city || ""} {entry.area ? `, ${entry.area}` : ""}</div>
-                  <div>Late: {entry.lateMinutes || 0}m | OT: {entry.overtimeMinutes || 0}m</div>
+                  <div>
+                    {entry.city || ""} {entry.area ? `, ${entry.area}` : ""}
+                  </div>
+                  <div>
+                    Late: {entry.lateMinutes || 0}m | OT:{" "}
+                    {entry.overtimeMinutes || 0}m
+                  </div>
                 </div>
               </div>
             ))}
@@ -379,7 +427,9 @@ function InfoBox({ title, value }: { title: string; value: string }) {
   return (
     <div className="rounded-3xl border border-white/10 bg-slate-950/40 p-4">
       <div className="text-sm text-slate-400">{title}</div>
-      <div className="mt-2 wrap-break-word text-sm font-medium text-white">{value}</div>
+      <div className="mt-2 wrap-break-word text-sm font-medium text-white">
+        {value}
+      </div>
     </div>
   );
 }
