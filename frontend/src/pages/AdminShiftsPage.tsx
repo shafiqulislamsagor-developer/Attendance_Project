@@ -17,8 +17,8 @@ const emptyForm = {
   name: "",
   startTime: "09:00",
   endTime: "18:00",
+  breakMinutes: 60,
   graceMinutes: 15,
-  minimumWorkHours: 8,
 };
 
 export function AdminShiftsPage() {
@@ -59,8 +59,8 @@ export function AdminShiftsPage() {
         name: form.name.trim(),
         startTime: form.startTime,
         endTime: form.endTime,
+        breakMinutes: Number(form.breakMinutes) || 0,
         graceMinutes: Number(form.graceMinutes) || 0,
-        minimumWorkHours: Number(form.minimumWorkHours) || 8,
       };
       if (editingId) {
         await updateShift(editingId, payload);
@@ -87,8 +87,8 @@ export function AdminShiftsPage() {
       name: shift.name,
       startTime: shift.startTime,
       endTime: shift.endTime,
+      breakMinutes: shift.breakMinutes,
       graceMinutes: shift.graceMinutes,
-      minimumWorkHours: shift.minimumWorkHours,
     });
   };
 
@@ -132,7 +132,7 @@ export function AdminShiftsPage() {
             ) : null}
           </div>
 
-          <form onSubmit={submit} className="grid gap-4 md:grid-cols-5">
+          <form onSubmit={submit} className="grid gap-4 md:grid-cols-4">
             <label className="block md:col-span-1">
               <span className="mb-2 block text-sm font-medium text-slate-300">
                 Name
@@ -170,6 +170,19 @@ export function AdminShiftsPage() {
             </label>
             <label className="block md:col-span-1">
               <span className="mb-2 block text-sm font-medium text-slate-300">
+                Break minutes
+              </span>
+              <input
+                className="input"
+                type="number"
+                value={form.breakMinutes}
+                onChange={(e) =>
+                  setForm({ ...form, breakMinutes: Number(e.target.value) })
+                }
+              />
+            </label>
+            <label className="block md:col-span-1">
+              <span className="mb-2 block text-sm font-medium text-slate-300">
                 Grace minutes
               </span>
               <input
@@ -181,20 +194,7 @@ export function AdminShiftsPage() {
                 }
               />
             </label>
-            <label className="block md:col-span-1">
-              <span className="mb-2 block text-sm font-medium text-slate-300">
-                Minimum hours
-              </span>
-              <input
-                className="input"
-                type="number"
-                value={form.minimumWorkHours}
-                onChange={(e) =>
-                  setForm({ ...form, minimumWorkHours: Number(e.target.value) })
-                }
-              />
-            </label>
-            <div className="md:col-span-5">
+            <div className="md:col-span-4">
               <button
                 type="submit"
                 disabled={saving}
@@ -231,15 +231,16 @@ export function AdminShiftsPage() {
               <tr>
                 <DataTh>Name</DataTh>
                 <DataTh>Time</DataTh>
+                <DataTh>Break</DataTh>
                 <DataTh>Grace</DataTh>
-                <DataTh>Minimum hours</DataTh>
+                <DataTh>Effective hours</DataTh>
                 <DataTh>Status</DataTh>
                 <DataTh>Actions</DataTh>
               </tr>
             </DataTableHead>
             <DataTableBody>
               {loading ? (
-                <LoadingState colSpan={6} message="Loading shifts..." />
+                <LoadingState colSpan={7} message="Loading shifts..." />
               ) : null}
               {!loading && items.length
                 ? items.map((shift) => (
@@ -248,8 +249,19 @@ export function AdminShiftsPage() {
                       <DataTd>
                         {shift.startTime} - {shift.endTime}
                       </DataTd>
+                      <DataTd>{shift.breakMinutes} min</DataTd>
                       <DataTd>{shift.graceMinutes} min</DataTd>
-                      <DataTd>{shift.minimumWorkHours} hr</DataTd>
+                      <DataTd>
+                        {Math.max(
+                          0,
+                          Math.round((shift.effectiveMinutes || 0) / 60),
+                        )}
+                        h
+                        <span className="ml-2 text-xs text-slate-500">
+                          ({Math.round((shift.officeMinutes || 0) / 60)}h
+                          office)
+                        </span>
+                      </DataTd>
                       <DataTd>{shift.isActive ? "Active" : "Inactive"}</DataTd>
                       <DataTd>
                         <div className="flex gap-3 text-sm">

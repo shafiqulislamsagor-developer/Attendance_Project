@@ -16,6 +16,7 @@ import {
   listEmployees,
   resolveUploadUrl,
 } from "../lib/api";
+import { formatDeviceInfoLabel } from "../lib/device";
 import type { Attendance, User } from "../types";
 
 function minutesToHours(minutes?: number) {
@@ -31,6 +32,7 @@ export function AdminAttendancePage() {
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionMenuId, setActionMenuId] = useState<string | null>(null);
 
   const employeeMap = useMemo(() => {
     const map = new Map<string, User>();
@@ -64,20 +66,33 @@ export function AdminAttendancePage() {
     attendanceId: string,
     action: "approve" | "reject" | "suspicious",
   ) => {
+    const nextState =
+      action === "approve"
+        ? { status: "present", approvalStatus: "approved" }
+        : action === "reject"
+          ? { status: "rejected", approvalStatus: "rejected" }
+          : { status: "suspicious", approvalStatus: "suspicious" };
+
+    setAttendance((prev) =>
+      prev.map((item) =>
+        item.id === attendanceId
+          ? {
+              ...item,
+              ...nextState,
+            }
+          : item,
+      ),
+    );
     try {
       await approveAttendance(attendanceId, {
         action,
-        status:
-          action === "approve"
-            ? "present"
-            : action === "reject"
-              ? "rejected"
-              : "suspicious",
+        status: nextState.status,
       });
       toast.success(`Attendance ${action}d`);
-      await loadAttendance();
+      setActionMenuId(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Action failed");
+      await loadAttendance();
     }
   };
 
@@ -140,13 +155,20 @@ export function AdminAttendancePage() {
                       </div>
                     </DataTd>
                     <DataTd>
-                      <span className="inline-block max-w-56 truncate" title={item.deviceInfo || "-"}>
-                        {item.deviceInfo || "-"}
+                      <span
+                        className="inline-block max-w-56 truncate"
+                        title={item.deviceInfo || "-"}
+                      >
+                        {formatDeviceInfoLabel(item.deviceInfo)}
                       </span>
                     </DataTd>
                     <DataTd>
                       {item.image ? (
-                        <a href={resolveUploadUrl(item.image)} target="_blank" rel="noreferrer">
+                        <a
+                          href={resolveUploadUrl(item.image)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
                           <img
                             src={resolveUploadUrl(item.image)}
                             alt="proof"
@@ -159,15 +181,29 @@ export function AdminAttendancePage() {
                     </DataTd>
                     <DataTd>{new Date(item.clockIn).toLocaleString()}</DataTd>
                     <DataTd>
-                      {item.clockOut ? new Date(item.clockOut).toLocaleString() : "-"}
+                      {item.clockOut
+                        ? new Date(item.clockOut).toLocaleString()
+                        : "-"}
                     </DataTd>
                     <DataTd>{minutesToHours(item.workDuration)}</DataTd>
                     <DataTd>{item.lateMinutes || 0}m</DataTd>
                     <DataTd>{item.overtimeMinutes || 0}m</DataTd>
                     <DataTd>
-                      <div className="max-w-56 text-xs text-slate-300" title={item.formattedAddress || "-"}>
+                      <div
+                        className="max-w-56 text-xs text-slate-300"
+                        title={item.formattedAddress || "-"}
+                      >
                         {item.city || ""} {item.area ? `, ${item.area}` : ""}
                       </div>
+                      {item.geoFenceStatus ? (
+                        <div className="mt-1 text-xs uppercase tracking-[0.2em] text-cyan-300">
+                          {item.geoFenceStatus === "outside"
+                            ? "Outside office"
+                            : item.geoFenceStatus === "inside"
+                              ? "Within office"
+                              : "Geo-fence unknown"}
+                        </div>
+                      ) : null}
                       <a
                         href={mapsUrl}
                         target="_blank"
@@ -180,25 +216,42 @@ export function AdminAttendancePage() {
                     <DataTd>{item.status}</DataTd>
                     <DataTd>{item.approvalStatus || "pending"}</DataTd>
                     <DataTd>
-                      <div className="flex flex-col gap-2">
+                      <div className="relative flex items-center gap-2">
+                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
+                          {item.approvalStatus || "pending"}
+                        </span>
                         <button
-                          onClick={() => takeAction(item.id, "approve")}
-                          className="rounded-lg bg-emerald-500/20 px-2 py-1 text-xs text-emerald-200"
+                          onClick={() =>
+                            setActionMenuId((current) =>
+                              current === item.id ? null : item.id,
+                            )
+                          }
+                          className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs text-white transition hover:bg-white/10"
                         >
-                          Approve
+                          Edit
                         </button>
-                        <button
-                          onClick={() => takeAction(item.id, "reject")}
-                          className="rounded-lg bg-rose-500/20 px-2 py-1 text-xs text-rose-200"
-                        >
-                          Reject
-                        </button>
-                        <button
-                          onClick={() => takeAction(item.id, "suspicious")}
-                          className="rounded-lg bg-amber-500/20 px-2 py-1 text-xs text-amber-100"
-                        >
-                          Suspicious
-                        </button>
+                        {actionMenuId === item.id ? (
+                          <div className="absolute right-0 top-10 z-20 w-40 rounded-2xl border border-white/10 bg-slate-950 p-2 shadow-2xl shadow-black/30">
+                            <button
+                              onClick={() => takeAction(item.id, "approve")}
+                              className="flex w-full rounded-xl px-3 py-2 text-left text-xs text-emerald-200 transition hover:bg-emerald-500/10"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => takeAction(item.id, "reject")}
+                              className="flex w-full rounded-xl px-3 py-2 text-left text-xs text-rose-200 transition hover:bg-rose-500/10"
+                            >
+                              Reject
+                            </button>
+                            <button
+                              onClick={() => takeAction(item.id, "suspicious")}
+                              className="flex w-full rounded-xl px-3 py-2 text-left text-xs text-amber-100 transition hover:bg-amber-500/10"
+                            >
+                              Suspicious
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     </DataTd>
                   </tr>

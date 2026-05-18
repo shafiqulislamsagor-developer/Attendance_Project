@@ -46,6 +46,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("/api/v1/attendance/my-summary", s.withAuth(http.HandlerFunc(s.attendanceHandler.EmployeeSummary)))
 	mux.Handle("/api/v1/attendance/", s.withAuth(s.requireAdmin(http.HandlerFunc(s.attendanceHandler.Approve))))
 	mux.Handle("/api/v1/office-settings", s.withAuth(s.requireAdmin(http.HandlerFunc(s.officeHandler.GetOrUpdate))))
+	mux.Handle("/ws/live-board", s.withAuth(http.HandlerFunc(s.wsLiveBoard)))
 
 	return s.corsMiddleware(mux)
 }
@@ -92,3 +93,8 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	utils.JSON(w, http.StatusOK, s.db.Health())
 }
+
+func (s *Server) wsLiveBoard(w http.ResponseWriter, r *http.Request) {
+	s.ws.HandleWebSocket(w, r)
+}
+

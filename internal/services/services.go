@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -141,7 +142,7 @@ func (s *authService) Login(ctx context.Context, input models.LoginInput, metada
 		AccessToken:  token,
 		RefreshToken: refreshToken,
 		ExpiresIn:    int64(s.cfg.TokenTTL.Seconds()),
-		User:         user,
+		User:         sanitizeUser(user),
 	}, nil
 }
 
@@ -181,7 +182,11 @@ func (s *employeeService) List(ctx context.Context, filter repositories.UserList
 }
 
 func (s *employeeService) Get(ctx context.Context, id string) (models.User, error) {
-	return s.users.FindByID(ctx, id)
+	user, err := s.users.FindByID(ctx, id)
+	if err != nil {
+		return models.User{}, err
+	}
+	return sanitizeUser(user), nil
 }
 
 func (s *employeeService) Update(ctx context.Context, id string, input models.UpdateUserInput) (models.User, error) {
@@ -229,7 +234,7 @@ func (s *employeeService) Profile(ctx context.Context, id string) (models.Employ
 	if err != nil {
 		return models.EmployeeAttendanceProfile{}, err
 	}
-	return buildEmployeeProfile(user, history), nil
+	return buildEmployeeProfile(sanitizeUser(user), history), nil
 }
 
 func (s *attendanceService) ClockIn(ctx context.Context, input models.ClockInInput) (models.Attendance, error) {
@@ -263,14 +268,17 @@ func (s *attendanceService) ClockIn(ctx context.Context, input models.ClockInInp
 	}
 	country, city, area, road, address := s.reverseGeocode(ctx, input.Latitude, input.Longitude)
 	now := time.Now()
-	deviceInfo := strings.TrimSpace(input.DeviceInfo)
-	if deviceInfo == "" {
-		deviceInfo = "unknown-device"
-	}
+	deviceInfo := normalizeDeviceInfo(input.DeviceInfo)
 	outsideOffice := false
+	geoFenceStatus := "not_configured"
 	if officeLocation, err := s.locations.GetActive(ctx); err == nil && officeLocation.RadiusMeters > 0 {
 		distance := distanceMeters(input.Latitude, input.Longitude, officeLocation.Latitude, officeLocation.Longitude)
 		outsideOffice = distance > float64(officeLocation.RadiusMeters)
+		if outsideOffice {
+			geoFenceStatus = "outside"
+		} else {
+			geoFenceStatus = "inside"
+		}
 	}
 	attendance := models.Attendance{
 		EmployeeID:       objectID,
@@ -278,6 +286,7 @@ func (s *attendanceService) ClockIn(ctx context.Context, input models.ClockInInp
 		Latitude:         input.Latitude,
 		Longitude:        input.Longitude,
 		IsOutsideOffice:  outsideOffice,
+		GeoFenceStatus:   geoFenceStatus,
 		Country:          country,
 		City:             city,
 		Area:             area,
@@ -319,12 +328,9 @@ func (s *attendanceService) ClockOut(ctx context.Context, input models.ClockOutI
 	}
 	workDuration := int64(time.Since(attendance.ClockIn).Minutes())
 	lateMinutes, overtimeMinutes := computeLateAndOvertime(attendance.ClockIn, workDuration, settings)
-	deviceInfo := strings.TrimSpace(input.DeviceInfo)
-	if deviceInfo == "" {
-		deviceInfo = attendance.DeviceInfo
-	}
-	if deviceInfo == "" {
-		deviceInfo = "unknown-device"
+	deviceInfo := normalizeDeviceInfo(input.DeviceInfo)
+	if deviceInfo == "Unknown device" {
+		deviceInfo = normalizeDeviceInfo(attendance.DeviceInfo)
 	}
 	updated, err := s.attendance.UpdateClockOut(ctx, input.AttendanceID, time.Now(), input.Latitude, input.Longitude, deviceInfo, workDuration, lateMinutes, overtimeMinutes)
 	if err != nil {
@@ -507,38 +513,114 @@ func createUser(ctx context.Context, users repositories.UserRepository, input mo
 	if err := utils.ValidateEmail(input.Email); err != nil {
 		return models.User{}, err
 	}
-	if err := utils.ValidatePassword(input.Password); err != nil {
-		return models.User{}, err
-	}
 	role := input.Role
 	if role == "" {
 		role = models.RoleEmployee
 	}
-	hash, err := utils.HashPassword(input.Password)
+	password := strings.TrimSpace(input.Password)
+	if role == models.RoleEmployee && password == "" {
+		generatedPassword, err := utils.GeneratePassword(12)
+		if err != nil {
+			return models.User{}, err
+		}
+		password = generatedPassword
+	}
+	if password == "" {
+		return models.User{}, errors.New("password is required")
+	}
+	if err := utils.ValidatePassword(password); err != nil {
+		return models.User{}, err
+	}
+	hash, err := utils.HashPassword(password)
 	if err != nil {
 		return models.User{}, err
 	}
 	now := time.Now()
+	employeeCode := strings.TrimSpace(input.EmployeeCode)
+	if role == models.RoleEmployee || employeeCode == "" {
+		employeeCode = generateEmployeeCode(ctx, users)
+	}
 	user := models.User{
 		Name:         strings.TrimSpace(input.Name),
 		Phone:        strings.TrimSpace(input.Phone),
 		Email:        strings.ToLower(strings.TrimSpace(input.Email)),
 		PasswordHash: hash,
-		Role:         role,
-		Status:       "active",
-		EmployeeCode: strings.TrimSpace(input.EmployeeCode),
-		Department:   strings.TrimSpace(input.Department),
-		DepartmentID: strings.TrimSpace(input.DepartmentID),
-		ShiftID:      strings.TrimSpace(input.ShiftID),
-		Address:      strings.TrimSpace(input.Address),
+		TemporaryPassword: func() string {
+			if role == models.RoleEmployee {
+				return password
+			}
+			return ""
+		}(),
+		Role:             role,
+		Status:           "active",
+		EmployeeCode:     employeeCode,
+		Department:       strings.TrimSpace(input.Department),
+		DepartmentID:     strings.TrimSpace(input.DepartmentID),
+		ShiftID:          strings.TrimSpace(input.ShiftID),
+		Address:          strings.TrimSpace(input.Address),
 		EmergencyContact: strings.TrimSpace(input.EmergencyContact),
-		ProfileImage: strings.TrimSpace(input.ProfileImage),
-		IsActive:     true,
-		IsDelete:     true,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ProfileImage:     strings.TrimSpace(input.ProfileImage),
+		IsActive:         true,
+		IsDelete:         true,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
-	return users.Create(ctx, user)
+	created, err := users.Create(ctx, user)
+	if err == nil {
+		return created, nil
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "duplicate key") && employeeCode != "" {
+		user.EmployeeCode = generateEmployeeCode(ctx, users)
+		return users.Create(ctx, user)
+	}
+	return models.User{}, err
+}
+
+func sanitizeUser(user models.User) models.User {
+	user.TemporaryPassword = ""
+	return user
+}
+
+func generateEmployeeCode(ctx context.Context, users repositories.UserRepository) string {
+	items, _, err := users.List(ctx, repositories.UserListFilter{Page: 1, Limit: 5000})
+	if err != nil {
+		return fmt.Sprintf("EMP-%04d", time.Now().UnixNano()%10000)
+	}
+	pattern := regexp.MustCompile(`^EMP-(\d+)$`)
+	var maxSequence int64
+	for _, item := range items {
+		match := pattern.FindStringSubmatch(strings.ToUpper(strings.TrimSpace(item.EmployeeCode)))
+		if len(match) != 2 {
+			continue
+		}
+		sequence, err := strconv.ParseInt(match[1], 10, 64)
+		if err == nil && sequence > maxSequence {
+			maxSequence = sequence
+		}
+	}
+	return fmt.Sprintf("EMP-%04d", maxSequence+1)
+}
+
+func normalizeDeviceInfo(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "Unknown device"
+	}
+	if strings.HasPrefix(value, "{") {
+		var payload struct {
+			Platform  string `json:"platform"`
+			UserAgent string `json:"userAgent"`
+		}
+		if err := json.Unmarshal([]byte(value), &payload); err == nil {
+			if payload.Platform != "" {
+				return payload.Platform
+			}
+			if payload.UserAgent != "" {
+				return payload.UserAgent
+			}
+		}
+	}
+	return value
 }
 
 func buildEmployeeProfile(user models.User, history []models.Attendance) models.EmployeeAttendanceProfile {

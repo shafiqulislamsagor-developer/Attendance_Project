@@ -10,13 +10,18 @@ import {
   EmptyState,
   LoadingState,
 } from "../components/table/DataTable";
-import { listAttendance, listEmployees } from "../lib/api";
+import { useWebSocket } from "../hooks/useWebSocket";
+import { getAuthToken, listAttendance, listEmployees } from "../lib/api";
 import type { Attendance, User } from "../types";
 
 export function AdminLiveBoardPage() {
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const token = getAuthToken();
+
+  const wsUrl = new URL("/ws/live-board", window.location.origin).toString();
+  const { state: wsState, subscribe } = useWebSocket(wsUrl, token || "");
 
   const activeEmployees = useMemo(
     () => attendance.filter((item) => !item.clockOut),
@@ -43,9 +48,51 @@ export function AdminLiveBoardPage() {
 
   useEffect(() => {
     loadBoard();
-    const timer = window.setInterval(loadBoard, 20000);
-    return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!wsState.connected) return;
+
+    const unsubscribe = subscribe(
+      "attendance.update",
+      (data: {
+        id: string;
+        employeeId: string;
+        employeeName: string;
+        status: string;
+        clockInTime: string;
+        clockOutTime?: string;
+        action: string;
+      }) => {
+        setAttendance((prev) => {
+          const existing = prev.find((a) => a.id === data.id);
+          if (existing) {
+            return prev.map((a) =>
+              a.id === data.id
+                ? {
+                    ...a,
+                    clockOut: data.clockOutTime
+                      ? new Date(data.clockOutTime)
+                      : undefined,
+                  }
+                : a,
+            );
+          }
+          return [
+            ...prev,
+            {
+              id: data.id,
+              employeeId: data.employeeId,
+              clockIn: new Date(data.clockInTime),
+              approvalStatus: data.status,
+            } as any,
+          ];
+        });
+      },
+    );
+
+    return unsubscribe;
+  }, [wsState.connected, subscribe]);
 
   const employeeMap = useMemo(() => {
     const map = new Map<string, User>();
@@ -60,7 +107,10 @@ export function AdminLiveBoardPage() {
           <Stat label="Active now" value={activeEmployees.length} />
           <Stat label="Loaded employees" value={employees.length} />
           <Stat label="Total records" value={attendance.length} />
-          <Stat label="Refreshing" value="20s" />
+          <Stat
+            label="Status"
+            value={wsState.connected ? "🟢 Live" : "🟡 Polling"}
+          />
         </section>
 
         <section className="rounded-4xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
@@ -70,12 +120,14 @@ export function AdminLiveBoardPage() {
                 Currently working employees
               </h2>
               <p className="mt-1 text-sm text-slate-400">
-                The board refreshes automatically every 20 seconds.
+                {wsState.connected
+                  ? "Real-time updates enabled via WebSocket"
+                  : "Updates via polling (every 20s)"}
               </p>
             </div>
             <button
               onClick={loadBoard}
-              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white"
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white hover:bg-white/10"
             >
               Refresh
             </button>

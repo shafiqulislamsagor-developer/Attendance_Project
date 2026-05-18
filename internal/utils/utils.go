@@ -104,6 +104,21 @@ func RandomToken(length int) (string, error) {
 	return hex.EncodeToString(buffer), nil
 }
 
+func GeneratePassword(length int) (string, error) {
+	if length < 12 {
+		length = 12
+	}
+	const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+	buffer := make([]byte, length)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", err
+	}
+	for index := range buffer {
+		buffer[index] = charset[int(buffer[index])%len(charset)]
+	}
+	return string(buffer), nil
+}
+
 func ValidateName(value string) error {
 	if strings.TrimSpace(value) == "" {
 		return errors.New("name is required")

@@ -10,19 +10,24 @@ import {
   EmptyState,
   LoadingState,
 } from "../components/table/DataTable";
-import { listLeaves, reviewLeaveRequest } from "../lib/api";
-import type { LeaveRequest } from "../types";
+import { listEmployees, listLeaves, reviewLeaveRequest } from "../lib/api";
+import type { LeaveRequest, User } from "../types";
 
 export function AdminLeavesPage() {
   const [items, setItems] = useState<LeaveRequest[]>([]);
+  const [employees, setEmployees] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const loadLeaves = async () => {
     setLoading(true);
     try {
-      const data = await listLeaves();
-      setItems(data.items);
+      const [leaveData, employeeData] = await Promise.all([
+        listLeaves(),
+        listEmployees({ limit: 500 }),
+      ]);
+      setItems(leaveData.items);
+      setEmployees(employeeData.items);
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -33,6 +38,10 @@ export function AdminLeavesPage() {
       setLoading(false);
     }
   };
+
+  const employeeMap = new Map(
+    employees.map((employee) => [employee.id, employee]),
+  );
 
   useEffect(() => {
     loadLeaves();
@@ -85,6 +94,7 @@ export function AdminLeavesPage() {
               <DataTh>Employee</DataTh>
               <DataTh>Type</DataTh>
               <DataTh>Range</DataTh>
+              <DataTh>Days</DataTh>
               <DataTh>Reason</DataTh>
               <DataTh>Status</DataTh>
               <DataTh>Actions</DataTh>
@@ -92,16 +102,36 @@ export function AdminLeavesPage() {
           </DataTableHead>
           <DataTableBody>
             {loading ? (
-              <LoadingState colSpan={6} message="Loading leave requests..." />
+              <LoadingState colSpan={7} message="Loading leave requests..." />
             ) : null}
             {!loading && items.length
               ? items.map((item) => (
                   <tr key={item.id}>
-                    <DataTd>{item.employeeId}</DataTd>
+                    <DataTd>
+                      <div className="font-medium text-white">
+                        {employeeMap.get(item.employeeId)?.name ||
+                          item.employeeId}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {employeeMap.get(item.employeeId)?.department || "-"}
+                      </div>
+                    </DataTd>
                     <DataTd>{item.leaveType}</DataTd>
                     <DataTd>
                       {new Date(item.fromDate).toLocaleDateString()} -{" "}
                       {new Date(item.toDate).toLocaleDateString()}
+                    </DataTd>
+                    <DataTd>
+                      {item.totalDays ||
+                        Math.max(
+                          1,
+                          Math.round(
+                            (new Date(item.toDate).getTime() -
+                              new Date(item.fromDate).getTime()) /
+                              86400000,
+                          ) + 1,
+                        )}{" "}
+                      days
                     </DataTd>
                     <DataTd>{item.reason}</DataTd>
                     <DataTd>{item.status}</DataTd>
@@ -131,7 +161,7 @@ export function AdminLeavesPage() {
                 ))
               : null}
             {!loading && !items.length ? (
-              <EmptyState colSpan={6} message="No leave requests found." />
+              <EmptyState colSpan={7} message="No leave requests found." />
             ) : null}
           </DataTableBody>
         </DataTable>

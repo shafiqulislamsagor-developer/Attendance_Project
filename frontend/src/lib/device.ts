@@ -1,35 +1,3 @@
-export type DevicePayload = {
-  deviceId: string;
-  source: "fingerprint" | "fallback";
-  userAgent: string;
-  platform: string;
-  screen: string;
-  timezone: string;
-  language: string;
-};
-
-function simpleHash(input: string): string {
-  let hash = 2166136261;
-  for (let i = 0; i < input.length; i += 1) {
-    hash ^= input.charCodeAt(i);
-    hash +=
-      (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
-  }
-  return `fb-${(hash >>> 0).toString(16)}`;
-}
-
-async function strongHash(input: string): Promise<string> {
-  if (!window.crypto?.subtle) {
-    return simpleHash(input);
-  }
-  const encoder = new TextEncoder();
-  const data = encoder.encode(input);
-  const digest = await window.crypto.subtle.digest("SHA-256", data);
-  const bytes = Array.from(new Uint8Array(digest));
-  const hex = bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("");
-  return `fp-${hex.slice(0, 24)}`;
-}
-
 function readPlatform(): string {
   const uaData = (
     navigator as Navigator & {
@@ -43,56 +11,70 @@ function readPlatform(): string {
   return navigator.platform || "unknown";
 }
 
-function readScreen(): string {
-  if (!window.screen) {
-    return "unknown";
-  }
-  const ratio = window.devicePixelRatio || 1;
-  return `${window.screen.width}x${window.screen.height}@${ratio}`;
-}
-
-function readTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
-  }
-}
-
-export async function buildDevicePayload(): Promise<DevicePayload> {
+export async function buildDeviceInfoString(): Promise<string> {
   const userAgent = navigator.userAgent || "unknown";
   const platform = readPlatform();
-  const screen = readScreen();
-  const timezone = readTimezone();
-  const language = navigator.language || "unknown";
-
-  const seed = [userAgent, platform, screen, timezone].join("|");
-
-  try {
-    const deviceId = await strongHash(seed);
-    return {
-      deviceId,
-      source: "fingerprint",
-      userAgent,
-      platform,
-      screen,
-      timezone,
-      language,
-    };
-  } catch {
-    return {
-      deviceId: simpleHash(seed),
-      source: "fallback",
-      userAgent,
-      platform,
-      screen,
-      timezone,
-      language,
-    };
-  }
+  const browser = detectBrowser(userAgent);
+  const os = detectOS(userAgent, platform);
+  return `${browser} on ${os}`;
 }
 
-export async function buildDeviceInfoString(): Promise<string> {
-  const payload = await buildDevicePayload();
-  return JSON.stringify(payload);
+export function formatDeviceInfoLabel(value?: string) {
+  if (!value) {
+    return "Unknown device";
+  }
+  try {
+    const parsed = JSON.parse(value) as {
+      platform?: string;
+      userAgent?: string;
+      browser?: string;
+      os?: string;
+      deviceId?: string;
+    };
+    if (parsed.browser && parsed.os) {
+      return `${parsed.browser} on ${parsed.os}`;
+    }
+    if (parsed.platform) {
+      return parsed.platform;
+    }
+    if (parsed.userAgent) {
+      return parsed.userAgent;
+    }
+    if (parsed.deviceId) {
+      return parsed.deviceId;
+    }
+  } catch {
+    // ignore malformed legacy payloads
+  }
+  return value;
+}
+
+function detectBrowser(userAgent: string): string {
+  const value = userAgent.toLowerCase();
+  if (value.includes("firefox")) {
+    return "Firefox";
+  }
+  if (value.includes("edg/")) {
+    return "Edge";
+  }
+  if (value.includes("chrome") && !value.includes("edg/")) {
+    return "Chrome";
+  }
+  if (value.includes("safari") && !value.includes("chrome")) {
+    return "Safari";
+  }
+  if (value.includes("opera") || value.includes("opr/")) {
+    return "Opera";
+  }
+  return "Browser";
+}
+
+function detectOS(userAgent: string, platform: string): string {
+  const value = `${userAgent} ${platform}`.toLowerCase();
+  if (value.includes("windows")) return "Windows";
+  if (value.includes("mac")) return "MacOS";
+  if (value.includes("linux")) return "Ubuntu";
+  if (value.includes("android")) return "Android";
+  if (value.includes("iphone") || value.includes("ipad")) return "iOS";
+  return platform || "Unknown OS";
 }

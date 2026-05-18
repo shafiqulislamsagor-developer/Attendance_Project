@@ -18,7 +18,7 @@ import {
 } from "../lib/api";
 import type { Department } from "../types";
 
-const emptyForm = { name: "", code: "" };
+const emptyForm = { name: "" };
 
 export function AdminDepartmentsPage() {
   const [items, setItems] = useState<Department[]>([]);
@@ -57,13 +57,11 @@ export function AdminDepartmentsPage() {
       if (editingId) {
         await updateDepartment(editingId, {
           name: form.name.trim(),
-          code: form.code.trim(),
         });
         toast.success("Department updated");
       } else {
         await createDepartment({
           name: form.name.trim(),
-          code: form.code.trim(),
         });
         toast.success("Department created");
       }
@@ -81,7 +79,7 @@ export function AdminDepartmentsPage() {
 
   const editDepartment = (department: Department) => {
     setEditingId(department.id);
-    setForm({ name: department.name, code: department.code });
+    setForm({ name: department.name });
   };
 
   const removeDepartment = async (id: string) => {
@@ -126,7 +124,7 @@ export function AdminDepartmentsPage() {
             ) : null}
           </div>
 
-          <form onSubmit={submit} className="grid gap-4 md:grid-cols-3">
+          <form onSubmit={submit} className="grid gap-4 md:grid-cols-2">
             <label className="block md:col-span-1">
               <span className="mb-2 block text-sm font-medium text-slate-300">
                 Department name
@@ -138,19 +136,6 @@ export function AdminDepartmentsPage() {
                   setForm({ ...form, name: event.target.value })
                 }
                 placeholder="Human Resources"
-              />
-            </label>
-            <label className="block md:col-span-1">
-              <span className="mb-2 block text-sm font-medium text-slate-300">
-                Code
-              </span>
-              <input
-                className="input"
-                value={form.code}
-                onChange={(event) =>
-                  setForm({ ...form, code: event.target.value })
-                }
-                placeholder="HR"
               />
             </label>
             <div className="md:col-span-1 md:self-end">
@@ -202,7 +187,11 @@ export function AdminDepartmentsPage() {
                 ? items.map((department) => (
                     <tr key={department.id}>
                       <DataTd>{department.name}</DataTd>
-                      <DataTd>{department.code}</DataTd>
+                      <DataTd>
+                        <span className="font-medium text-cyan-200">
+                          {department.code}
+                        </span>
+                      </DataTd>
                       <DataTd>
                         <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-100">
                           {department.isActive ? "Active" : "Inactive"}

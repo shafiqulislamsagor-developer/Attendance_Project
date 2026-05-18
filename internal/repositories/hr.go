@@ -29,7 +29,7 @@ func (r *departmentRepo) Create(ctx context.Context, department models.Departmen
 func (r *departmentRepo) List(ctx context.Context) ([]models.Department, error) {
 	ctx, cancel := timeoutContext(ctx)
 	defer cancel()
-	opts := options.Find().SetSort(bson.M{"name": 1})
+	opts := options.Find().SetSort(bson.D{{Key: "name", Value: 1}})
 	cur, err := r.collection.Find(ctx, bson.M{}, opts)
 	if err != nil {
 		return nil, err
@@ -104,7 +104,7 @@ func (r *shiftRepo) Create(ctx context.Context, shift models.Shift) (models.Shif
 func (r *shiftRepo) List(ctx context.Context) ([]models.Shift, error) {
 	ctx, cancel := timeoutContext(ctx)
 	defer cancel()
-	opts := options.Find().SetSort(bson.M{"startTime": 1})
+	opts := options.Find().SetSort(bson.D{{Key: "startTime", Value: 1}})
 	cur, err := r.collection.Find(ctx, bson.M{}, opts)
 	if err != nil {
 		return nil, err
@@ -141,13 +141,16 @@ func (r *shiftRepo) Update(ctx context.Context, id string, shift models.Shift) (
 		return models.Shift{}, err
 	}
 	update := bson.M{"$set": bson.M{
-		"name":              shift.Name,
-		"startTime":         shift.StartTime,
-		"endTime":           shift.EndTime,
-		"graceMinutes":      shift.GraceMinutes,
-		"minimumWorkHours":  shift.MinimumWorkHours,
-		"isActive":          shift.IsActive,
-		"updatedAt":         time.Now(),
+		"name":             shift.Name,
+		"startTime":        shift.StartTime,
+		"endTime":          shift.EndTime,
+		"breakMinutes":     shift.BreakMinutes,
+		"graceMinutes":     shift.GraceMinutes,
+		"minimumWorkHours": shift.MinimumWorkHours,
+		"officeMinutes":    shift.OfficeMinutes,
+		"effectiveMinutes": shift.EffectiveMinutes,
+		"isActive":         shift.IsActive,
+		"updatedAt":        time.Now(),
 	}}
 	if _, err := r.collection.UpdateByID(ctx, objectID, update); err != nil {
 		return models.Shift{}, err
@@ -186,7 +189,7 @@ func (r *leaveRepo) ListByEmployee(ctx context.Context, employeeID string) ([]mo
 	if err != nil {
 		return nil, err
 	}
-	opts := options.Find().SetSort(bson.M{"createdAt": -1})
+	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}})
 	cur, err := r.collection.Find(ctx, bson.M{"employeeId": objectID}, opts)
 	if err != nil {
 		return nil, err
@@ -206,7 +209,7 @@ func (r *leaveRepo) ListByEmployee(ctx context.Context, employeeID string) ([]mo
 func (r *leaveRepo) List(ctx context.Context) ([]models.LeaveRequest, error) {
 	ctx, cancel := timeoutContext(ctx)
 	defer cancel()
-	opts := options.Find().SetSort(bson.M{"createdAt": -1})
+	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}})
 	cur, err := r.collection.Find(ctx, bson.M{}, opts)
 	if err != nil {
 		return nil, err
@@ -288,7 +291,7 @@ func (r *leaveRepo) UpsertBalance(ctx context.Context, balance models.LeaveBalan
 func (r *officeLocationRepo) List(ctx context.Context) ([]models.OfficeLocation, error) {
 	ctx, cancel := timeoutContext(ctx)
 	defer cancel()
-	opts := options.Find().SetSort(bson.M{"isActive": -1, "createdAt": -1})
+	opts := options.Find().SetSort(bson.D{{Key: "isActive", Value: -1}, {Key: "createdAt", Value: -1}})
 	cur, err := r.collection.Find(ctx, bson.M{}, opts)
 	if err != nil {
 		return nil, err
@@ -314,13 +317,13 @@ func (r *officeLocationRepo) Upsert(ctx context.Context, location models.OfficeL
 		location.CreatedAt = now
 	}
 	update := bson.M{"$set": bson.M{
-		"name":        location.Name,
-		"latitude":    location.Latitude,
-		"longitude":   location.Longitude,
+		"name":         location.Name,
+		"latitude":     location.Latitude,
+		"longitude":    location.Longitude,
 		"radiusMeters": location.RadiusMeters,
-		"address":     location.Address,
-		"isActive":    location.IsActive,
-		"updatedAt":   location.UpdatedAt,
+		"address":      location.Address,
+		"isActive":     location.IsActive,
+		"updatedAt":    location.UpdatedAt,
 	}, "$setOnInsert": bson.M{"createdAt": location.CreatedAt}}
 	opts := options.FindOneAndUpdate().SetUpsert(true).SetReturnDocument(options.After)
 	if err := r.collection.FindOneAndUpdate(ctx, bson.M{"name": location.Name}, update, opts).Decode(&location); err != nil {
@@ -359,7 +362,7 @@ func (r *auditRepo) List(ctx context.Context, limit int64) ([]models.AuditLog, e
 	if limit < 1 {
 		limit = 50
 	}
-	opts := options.Find().SetSort(bson.M{"createdAt": -1}).SetLimit(limit)
+	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}}).SetLimit(limit)
 	cur, err := r.collection.Find(ctx, bson.M{}, opts)
 	if err != nil {
 		return nil, err

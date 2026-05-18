@@ -244,7 +244,7 @@ func (r *userRepo) List(ctx context.Context, filter UserListFilter) ([]models.Us
 	if err != nil {
 		return nil, 0, err
 	}
-	opts := options.Find().SetSkip((page - 1) * limit).SetLimit(limit).SetSort(bson.M{"createdAt": -1})
+	opts := options.Find().SetSkip((page - 1) * limit).SetLimit(limit).SetSort(bson.D{{Key: "createdAt", Value: -1}})
 	cur, err := r.collection.Find(ctx, query, opts)
 	if err != nil {
 		return nil, 0, err
@@ -358,7 +358,7 @@ func (r *userRepo) ApplyDeletePolicy(ctx context.Context) error {
 	defer cancel()
 
 	var firstUser models.User
-	err := r.collection.FindOne(ctx, bson.M{}, options.FindOne().SetSort(bson.M{"createdAt": 1})).Decode(&firstUser)
+	err := r.collection.FindOne(ctx, bson.M{}, options.FindOne().SetSort(bson.D{{Key: "createdAt", Value: 1}})).Decode(&firstUser)
 	if errors.Is(err, mongo.ErrNoDocuments) {
 		return nil
 	}
@@ -436,16 +436,16 @@ func (r *attendanceRepo) UpdateClockOut(ctx context.Context, id string, clockOut
 		return models.Attendance{}, err
 	}
 	update := bson.M{"$set": bson.M{
-		"clockOut":         clockOut,
-		"status":           "pending",
-		"latitude":         latitude,
-		"longitude":        longitude,
-		"deviceInfo":       deviceInfo,
-		"workDuration":     workDuration,
-		"lateMinutes":      lateMinutes,
-		"overtimeMinutes":  overtimeMinutes,
-		"approvalStatus":   "pending",
-		"updatedAt":        clockOut,
+		"clockOut":        clockOut,
+		"status":          "pending",
+		"latitude":        latitude,
+		"longitude":       longitude,
+		"deviceInfo":      deviceInfo,
+		"workDuration":    workDuration,
+		"lateMinutes":     lateMinutes,
+		"overtimeMinutes": overtimeMinutes,
+		"approvalStatus":  "pending",
+		"updatedAt":       clockOut,
 	}}
 	filter := bson.M{"_id": objectID, "status": bson.M{"$ne": "clocked-out"}}
 	result, err := r.collection.UpdateOne(ctx, filter, update)
@@ -528,7 +528,7 @@ func (r *attendanceRepo) List(ctx context.Context, filter models.AttendanceFilte
 	if err != nil {
 		return nil, 0, err
 	}
-	opts := options.Find().SetSkip((page - 1) * limit).SetLimit(limit).SetSort(bson.M{"clockIn": -1})
+	opts := options.Find().SetSkip((page - 1) * limit).SetLimit(limit).SetSort(bson.D{{Key: "clockIn", Value: -1}})
 	cur, err := r.collection.Find(ctx, query, opts)
 	if err != nil {
 		return nil, 0, err
@@ -570,7 +570,7 @@ func (r *attendanceRepo) RecentByEmployee(ctx context.Context, employeeID string
 	if err != nil {
 		return nil, err
 	}
-	opts := options.Find().SetSort(bson.M{"clockIn": -1}).SetLimit(limit)
+	opts := options.Find().SetSort(bson.D{{Key: "clockIn", Value: -1}}).SetLimit(limit)
 	cur, err := r.collection.Find(ctx, bson.M{"employeeId": objectID}, opts)
 	if err != nil {
 		return nil, err

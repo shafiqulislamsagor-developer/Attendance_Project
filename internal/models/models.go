@@ -15,24 +15,25 @@ const (
 )
 
 type User struct {
-	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name         string             `bson:"name" json:"name"`
-	Phone        string             `bson:"phone,omitempty" json:"phone,omitempty"`
-	Email        string             `bson:"email" json:"email"`
-	PasswordHash string             `bson:"passwordHash" json:"-"`
-	Role         Role               `bson:"role" json:"role"`
-	Status       string             `bson:"status,omitempty" json:"status,omitempty"`
-	EmployeeCode string             `bson:"employeeCode,omitempty" json:"employeeCode,omitempty"`
-	Department   string             `bson:"department,omitempty" json:"department,omitempty"`
-	DepartmentID string             `bson:"departmentId,omitempty" json:"departmentId,omitempty"`
-	ShiftID      string             `bson:"shiftId,omitempty" json:"shiftId,omitempty"`
-	Address      string             `bson:"address,omitempty" json:"address,omitempty"`
-	EmergencyContact string          `bson:"emergencyContact,omitempty" json:"emergencyContact,omitempty"`
-	ProfileImage string             `bson:"profileImage,omitempty" json:"profileImage,omitempty"`
-	IsActive     bool               `bson:"isActive" json:"isActive"`
-	IsDelete     bool               `bson:"isDelete" json:"isDelete"`
-	CreatedAt    time.Time          `bson:"createdAt" json:"createdAt"`
-	UpdatedAt    time.Time          `bson:"updatedAt" json:"updatedAt"`
+	ID                primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Name              string             `bson:"name" json:"name"`
+	Phone             string             `bson:"phone,omitempty" json:"phone,omitempty"`
+	Email             string             `bson:"email" json:"email"`
+	PasswordHash      string             `bson:"passwordHash" json:"-"`
+	TemporaryPassword string             `bson:"temporaryPassword,omitempty" json:"temporaryPassword,omitempty"`
+	Role              Role               `bson:"role" json:"role"`
+	Status            string             `bson:"status,omitempty" json:"status,omitempty"`
+	EmployeeCode      string             `bson:"employeeCode,omitempty" json:"employeeCode,omitempty"`
+	Department        string             `bson:"department,omitempty" json:"department,omitempty"`
+	DepartmentID      string             `bson:"departmentId,omitempty" json:"departmentId,omitempty"`
+	ShiftID           string             `bson:"shiftId,omitempty" json:"shiftId,omitempty"`
+	Address           string             `bson:"address,omitempty" json:"address,omitempty"`
+	EmergencyContact  string             `bson:"emergencyContact,omitempty" json:"emergencyContact,omitempty"`
+	ProfileImage      string             `bson:"profileImage,omitempty" json:"profileImage,omitempty"`
+	IsActive          bool               `bson:"isActive" json:"isActive"`
+	IsDelete          bool               `bson:"isDelete" json:"isDelete"`
+	CreatedAt         time.Time          `bson:"createdAt" json:"createdAt"`
+	UpdatedAt         time.Time          `bson:"updatedAt" json:"updatedAt"`
 }
 
 type CreateUserInput struct {
@@ -114,6 +115,7 @@ type Attendance struct {
 	Latitude         float64             `bson:"latitude" json:"latitude"`
 	Longitude        float64             `bson:"longitude" json:"longitude"`
 	IsOutsideOffice  bool                `bson:"isOutsideOffice" json:"isOutsideOffice"`
+	GeoFenceStatus   string              `bson:"geoFenceStatus,omitempty" json:"geoFenceStatus,omitempty"`
 	Country          string              `bson:"country,omitempty" json:"country,omitempty"`
 	City             string              `bson:"city,omitempty" json:"city,omitempty"`
 	Area             string              `bson:"area,omitempty" json:"area,omitempty"`
@@ -189,30 +191,30 @@ type EmployeeMetric struct {
 }
 
 type AttendanceAnalytics struct {
-	TotalEmployees           int64          `json:"totalEmployees"`
-	PresentToday             int64          `json:"presentToday"`
-	AbsentToday              int64          `json:"absentToday"`
-	PendingApprovals         int64          `json:"pendingApprovals"`
-	LateEmployees            int64          `json:"lateEmployees"`
-	PerfectTimingEmployees   int64          `json:"perfectTimingEmployees"`
-	UnderTimeEmployees       int64          `json:"underTimeEmployees"`
-	OvertimeEmployees        int64          `json:"overtimeEmployees"`
-	WeeklyAttendanceChart    []ChartPoint   `json:"weeklyAttendanceChart"`
-	MonthlyAttendanceChart   []ChartPoint   `json:"monthlyAttendanceChart"`
+	TotalEmployees           int64            `json:"totalEmployees"`
+	PresentToday             int64            `json:"presentToday"`
+	AbsentToday              int64            `json:"absentToday"`
+	PendingApprovals         int64            `json:"pendingApprovals"`
+	LateEmployees            int64            `json:"lateEmployees"`
+	PerfectTimingEmployees   int64            `json:"perfectTimingEmployees"`
+	UnderTimeEmployees       int64            `json:"underTimeEmployees"`
+	OvertimeEmployees        int64            `json:"overtimeEmployees"`
+	WeeklyAttendanceChart    []ChartPoint     `json:"weeklyAttendanceChart"`
+	MonthlyAttendanceChart   []ChartPoint     `json:"monthlyAttendanceChart"`
 	EmployeePerformanceChart []EmployeeMetric `json:"employeePerformanceChart"`
 }
 
 type EmployeeAttendanceProfile struct {
-	Employee               User          `json:"employee"`
-	History                []Attendance  `json:"history"`
-	TotalPresentDays       int64         `json:"totalPresentDays"`
-	TotalAbsentDays        int64         `json:"totalAbsentDays"`
-	TotalLateDays          int64         `json:"totalLateDays"`
+	Employee                User         `json:"employee"`
+	History                 []Attendance `json:"history"`
+	TotalPresentDays        int64        `json:"totalPresentDays"`
+	TotalAbsentDays         int64        `json:"totalAbsentDays"`
+	TotalLateDays           int64        `json:"totalLateDays"`
 	TotalApprovedAttendance int64        `json:"totalApprovedAttendance"`
 	TotalRejectedAttendance int64        `json:"totalRejectedAttendance"`
-	PendingApprovals       int64         `json:"pendingApprovals"`
-	AverageWorkDuration    int64         `json:"averageWorkDuration"`
-	TodayStatus            string        `json:"todayStatus"`
+	PendingApprovals        int64        `json:"pendingApprovals"`
+	AverageWorkDuration     int64        `json:"averageWorkDuration"`
+	TodayStatus             string       `json:"todayStatus"`
 }
 
 type AttendanceApprovalInput struct {

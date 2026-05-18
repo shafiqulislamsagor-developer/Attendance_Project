@@ -104,7 +104,7 @@ func (r *sessionRepo) ListActiveByUser(ctx context.Context, userID string) ([]mo
 	if err != nil {
 		return nil, err
 	}
-	opts := options.Find().SetSort(bson.M{"createdAt": -1})
+	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}})
 	cur, err := r.collection.Find(ctx, bson.M{"userId": objectID, "revokedAt": bson.M{"$exists": false}}, opts)
 	if err != nil {
 		return nil, err
